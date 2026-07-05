@@ -1,8 +1,10 @@
 ﻿"""
 ui/home.py
 
-Platform home screen for the Secure Vault Platform.
-Displays all registered modules and platform navigation.
+Platform Dashboard for the Secure Vault Platform.
+
+Displayed after successful platform authentication.
+Shows all registered modules and platform navigation.
 """
 
 import tkinter as tk
@@ -10,44 +12,54 @@ from typing import Callable
 
 from vaultcore.config import PLATFORM_NAME, PLATFORM_VERSION
 from vaultcore.module_manager import ModuleManager, ModuleDefinition
+from vaultcore.session import SessionManager
 from vaultcore.theme import Theme
 
 
 class PlatformHome(tk.Frame):
     """
-    The main home screen of the Secure Vault Platform.
+    The authenticated platform dashboard.
 
-    Displays module cards, platform navigation,
-    and provides entry points to all registered modules.
+    Displays module cards, session info,
+    and platform navigation options.
     """
 
     def __init__(
         self,
         parent: tk.Widget,
         module_manager: ModuleManager,
+        session_manager: SessionManager,
         on_settings: Callable,
+        on_security: Callable,
         on_about: Callable,
+        on_lock: Callable,
         on_exit: Callable
     ) -> None:
         """
-        Initialize the platform home screen.
+        Initialize the platform dashboard.
 
         Args:
-            parent:         The parent Tkinter widget.
-            module_manager: The platform module registry.
-            on_settings:    Callback to open platform settings.
-            on_about:       Callback to open the about screen.
-            on_exit:        Callback to exit the platform.
+            parent:          The parent widget.
+            module_manager:  The platform module registry.
+            session_manager: The platform session manager.
+            on_settings:     Open platform settings callback.
+            on_security:     Open security center callback.
+            on_about:        Open about screen callback.
+            on_lock:         Lock the platform callback.
+            on_exit:         Exit the platform callback.
         """
         super().__init__(parent, bg=Theme.BACKGROUND)
-        self._module_manager = module_manager
-        self._on_settings    = on_settings
-        self._on_about       = on_about
-        self._on_exit        = on_exit
+        self._module_manager  = module_manager
+        self._session_manager = session_manager
+        self._on_settings     = on_settings
+        self._on_security     = on_security
+        self._on_about        = on_about
+        self._on_lock         = on_lock
+        self._on_exit         = on_exit
         self._build()
 
     def _build(self) -> None:
-        """Construct the platform home layout."""
+        """Construct the platform dashboard layout."""
         self.pack(fill="both", expand=True)
         self._build_header()
         self._build_body()
@@ -78,15 +90,35 @@ class PlatformHome(tk.Frame):
             fg=Theme.TEXT
         ).pack(anchor="w")
 
+        session = self._session_manager.get_session()
+        login_info = ""
+        if session:
+            login_info = f"Authenticated  •  Session started {session.formatted_login_time()}"
+
         tk.Label(
             title_frame,
-            text=f"Version {PLATFORM_VERSION}  •  Privacy-first secure desktop platform",
+            text=login_info,
             font=Theme.FONT_SMALL,
             bg=Theme.PANEL,
             fg=Theme.SUBTLE
         ).pack(anchor="w")
 
-        # Header buttons
+        # Right side buttons
+        tk.Button(
+            header,
+            text="🔒  Lock",
+            font=Theme.FONT_BODY,
+            bg=Theme.HIGHLIGHT,
+            fg="#ffffff",
+            activebackground=Theme.ACCENT,
+            activeforeground=Theme.TEXT,
+            relief="flat",
+            padx=14,
+            pady=6,
+            cursor="hand2",
+            command=self._on_lock
+        ).pack(side="right", padx=12, pady=16)
+
         tk.Button(
             header,
             text="Exit",
@@ -100,7 +132,7 @@ class PlatformHome(tk.Frame):
             pady=6,
             cursor="hand2",
             command=self._on_exit
-        ).pack(side="right", padx=12, pady=16)
+        ).pack(side="right", padx=(0, 4), pady=16)
 
         tk.Button(
             header,
@@ -119,6 +151,21 @@ class PlatformHome(tk.Frame):
 
         tk.Button(
             header,
+            text="🛡  Security",
+            font=Theme.FONT_BODY,
+            bg=Theme.ACCENT,
+            fg=Theme.TEXT,
+            activebackground=Theme.HIGHLIGHT,
+            activeforeground="#ffffff",
+            relief="flat",
+            padx=14,
+            pady=6,
+            cursor="hand2",
+            command=self._on_security
+        ).pack(side="right", padx=(0, 4), pady=16)
+
+        tk.Button(
+            header,
             text="⚙  Settings",
             font=Theme.FONT_BODY,
             bg=Theme.ACCENT,
@@ -133,7 +180,7 @@ class PlatformHome(tk.Frame):
         ).pack(side="right", padx=(0, 4), pady=16)
 
     def _build_body(self) -> None:
-        """Build the main module grid area."""
+        """Build the module grid area."""
         body = tk.Frame(self, bg=Theme.BACKGROUND)
         body.pack(fill="both", expand=True, padx=40, pady=30)
 
@@ -145,18 +192,16 @@ class PlatformHome(tk.Frame):
             fg=Theme.TEXT
         ).pack(anchor="w", pady=(0, 20))
 
-        # Module card grid
         grid = tk.Frame(body, bg=Theme.BACKGROUND)
         grid.pack(fill="both", expand=True)
 
         modules = self._module_manager.get_all()
-        col     = 0
-
-        for module in modules:
+        for col, module in enumerate(modules):
             self._render_module_card(grid, module, col)
-            col += 1
 
-        grid.columnconfigure(tuple(range(max(len(modules), 1))), weight=1)
+        grid.columnconfigure(
+            tuple(range(max(len(modules), 1))), weight=1
+        )
 
     def _render_module_card(
         self,
@@ -164,25 +209,15 @@ class PlatformHome(tk.Frame):
         module: ModuleDefinition,
         column: int
     ) -> None:
-        """
-        Render a single module card.
-
-        Args:
-            parent: The grid frame parent.
-            module: The ModuleDefinition to render.
-            column: The grid column index.
-        """
+        """Render a single module card."""
         card = tk.Frame(
             parent,
             bg=Theme.PANEL,
             padx=28,
-            pady=28,
-            relief="flat",
-            bd=0
+            pady=28
         )
         card.grid(row=0, column=column, padx=12, pady=8, sticky="nsew")
 
-        # Icon
         tk.Label(
             card,
             text=module.icon,
@@ -191,7 +226,6 @@ class PlatformHome(tk.Frame):
             fg=Theme.TEXT
         ).pack(pady=(0, 10))
 
-        # Module name
         tk.Label(
             card,
             text=module.name,
@@ -200,7 +234,6 @@ class PlatformHome(tk.Frame):
             fg=Theme.TEXT
         ).pack()
 
-        # Version
         tk.Label(
             card,
             text=f"v{module.version}",
@@ -209,7 +242,6 @@ class PlatformHome(tk.Frame):
             fg=Theme.SUBTLE
         ).pack(pady=(2, 8))
 
-        # Description
         tk.Label(
             card,
             text=module.description,
@@ -220,7 +252,6 @@ class PlatformHome(tk.Frame):
             justify="center"
         ).pack(pady=(0, 16))
 
-        # Launch or Coming Soon button
         if module.available:
             tk.Button(
                 card,
@@ -249,12 +280,7 @@ class PlatformHome(tk.Frame):
             ).pack()
 
     def _launch_module(self, module: ModuleDefinition) -> None:
-        """
-        Launch a module via the module manager.
-
-        Args:
-            module: The ModuleDefinition to launch.
-        """
+        """Launch a module via the module manager."""
         self._module_manager.launch(module.id)
 
     def _build_footer(self) -> None:
