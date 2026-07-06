@@ -2,26 +2,26 @@
 
 A privacy-first, offline-first desktop platform for secure applications.
 
-Secure Vault Platform is the evolution of **Personal Document Vault** into a modular ecosystem built on a shared infrastructure called **VaultCore**. Rather than every secure application implementing its own authentication, encryption, storage, and settings, VaultCore provides these capabilities as reusable platform services while each module focuses solely on its own business logic.
+Secure Vault Platform is the evolution of **Personal Document Vault** into a modular ecosystem powered by a shared infrastructure called **VaultCore**. Instead of every secure application implementing its own authentication, encryption, storage, settings, and lifecycle management, VaultCore provides these capabilities as reusable platform services while each module focuses solely on its own business logic.
 
 ---
 
 # Vision
 
-Secure Vault Platform is designed around four core principles:
+Secure Vault Platform is built around four core principles:
 
 * 🔒 Privacy First
 * 💻 Offline First
 * 🛡 Security by Default
 * 🧩 Modular by Design
 
-Every module runs entirely offline and shares a common secure foundation provided by VaultCore.
+Every module runs entirely offline while sharing a secure, consistent, and reusable platform foundation.
 
 ---
 
 # Current Platform Architecture
 
-```
+```text
                      Secure Vault Platform
 
                               │
@@ -34,31 +34,31 @@ Every module runs entirely offline and shares a common secure foundation provide
 
                               │
 
-      ┌───────────────────────┼────────────────────────┐
+      ┌───────────────────────┼────────────────────────────┐
 
-      ▼                       ▼                        ▼
+      ▼                       ▼                            ▼
 
- Authentication        Session Manager         Module Manager
+ Authentication        Session Manager              Module Manager
 
- Encryption            Activity Monitor        Module Registry
+ Encryption            Activity Monitor             Module Registry
 
- Database              Settings Service
+ Database              Settings Service             VaultModule Contract
 
- Storage               Notification Service
+ Storage               Notification Service         Module Lifecycle
 
  Logging               Theme Service
 
- Backup
+ Backup                Event Bus
 
                               │
 
-      ┌───────────────────────┼───────────────────────┐
+      ┌───────────────────────┼────────────────────────────┐
 
-      ▼                       ▼                       ▼
+      ▼                       ▼                            ▼
 
- Document Vault        Password Vault        Secure Archive
+ Document Vault        Password Vault             Secure Archive
 
-     v1.0.0             Coming Soon          Coming Soon
+     v1.0.0             Coming Soon               Coming Soon
 
                               │
 
@@ -73,20 +73,20 @@ Every module runs entirely offline and shares a common secure foundation provide
 
 ## VaultCore
 
-VaultCore provides all shared platform infrastructure.
+VaultCore provides all shared infrastructure for every secure module.
 
 ### Authentication
 
 * Master password authentication
-* Password hashing
-* Password verification
+* Password hashing and verification
 * Platform-wide authentication
+* Shared login experience
 
 ### Session Management
 
 * Shared authenticated session
 * Session lifecycle management
-* Idle activity tracking
+* Idle activity monitoring
 * Automatic platform locking
 * Secure session destruction
 
@@ -94,41 +94,45 @@ VaultCore provides all shared platform infrastructure.
 
 * AES-256-GCM encryption
 * PBKDF2 password hashing
-* Offline-only operation
+* Offline-only architecture
 * Local encrypted storage
 
 ### Platform Services
 
 * Centralized logging
-* Notifications
+* Toast notifications
 * Theme management
 * Platform settings
 * Backup management
 * Shared database management
+* Shared storage abstraction
 
 ### Module Framework
 
 * Module registration
 * Module discovery
-* Module launching
+* Module lifecycle management
 * Session-aware module authorization
+* VaultModule contract
+* Dynamic module metadata
+* Platform Event Bus
 
 ---
 
 # Available Modules
 
-| Module            | Version | Status      |
-| ----------------- | ------- | ----------- |
-| 📄 Document Vault | 1.0.0   | Available   |
-| 🔒 Password Vault | —       | Coming Soon |
-| 📦 Secure Archive | —       | Coming Soon |
-| 📝 Secure Notes   | —       | Coming Soon |
+| Module            | Version | Status     |
+| ----------------- | ------- | ---------- |
+| 📄 Document Vault | 1.0.0   | Integrated |
+| 🔒 Password Vault | —       | Planned    |
+| 📦 Secure Archive | —       | Planned    |
+| 📝 Secure Notes   | —       | Planned    |
 
 ---
 
 # Document Vault
 
-The first module available on the platform.
+Document Vault is the first native module of the Secure Vault Platform.
 
 Current capabilities include:
 
@@ -139,16 +143,22 @@ Current capabilities include:
 * Preview
 * Integrity verification
 * Export
-* Backup support
+* Backup integration
+* Dynamic module metadata
+* Native platform lifecycle support
 
-Document Vault now operates as **Module 1** within Secure Vault Platform while remaining compatible with its standalone architecture during the migration phase.
+Document Vault now implements the shared **VaultModule** contract and serves as the reference implementation for future platform modules.
 
 ---
 
 # Current Platform Workflow
 
-```
+```text
 Launch Platform
+
+↓
+
+Initialize VaultCore
 
 ↓
 
@@ -172,11 +182,23 @@ Select Module
 
 ↓
 
-Module Authorization
+Module Manager
+
+↓
+
+Initialize Module
 
 ↓
 
 Launch Module
+
+↓
+
+Platform Event Bus
+
+↓
+
+Logger • Notifications • Dashboard
 
 ↓
 
@@ -188,41 +210,51 @@ Auto Lock
 
 ↓
 
-Session Destroyed on Exit
+Module Shutdown
+
+↓
+
+Session Destroyed
 ```
 
 ---
 
 # Project Structure
 
-```
+```text
 SecureVaultPlatform/
 
 ├── app.py
 ├── requirements.txt
 ├── README.md
+├── LICENSE
 │
 ├── vaultcore/
 │   ├── authentication.py
+│   ├── activity_monitor.py
 │   ├── backup.py
 │   ├── config.py
 │   ├── database.py
 │   ├── encryption.py
+│   ├── event_bus.py
 │   ├── hashing.py
 │   ├── logger.py
+│   ├── module_contract.py
 │   ├── module_manager.py
 │   ├── notifications.py
 │   ├── session.py
-│   ├── activity_monitor.py
 │   ├── settings_service.py
 │   ├── theme.py
 │   └── validators.py
 │
 ├── modules/
 │   └── document_vault/
+│       ├── module.py
+│       ├── core/
+│       ├── models/
+│       └── ui/
 │
 ├── ui/
-│
 ├── backups/
 ├── database/
 ├── logs/
@@ -233,7 +265,7 @@ SecureVaultPlatform/
 
 # Platform Startup
 
-```
+```text
 Launch Application
 
 ↓
@@ -246,15 +278,23 @@ Load Configuration
 
 ↓
 
+Initialize Logger
+
+↓
+
+Initialize Database
+
+↓
+
 Initialize Shared Services
 
 ↓
 
-Create Session Manager
+Initialize Event Bus
 
 ↓
 
-Initialize Activity Monitor
+Register Modules
 
 ↓
 
@@ -266,7 +306,7 @@ Authenticate User
 
 ↓
 
-Unlock Platform
+Create Session
 
 ↓
 
@@ -310,7 +350,7 @@ Launch Modules
 
 ## Completed
 
-### Sprint 7
+### Sprint 7 — Platform Foundation
 
 * VaultCore foundation
 * Module Manager
@@ -320,7 +360,7 @@ Launch Modules
 * Theme service
 * Document Vault registered as Module 1
 
-### Sprint 8
+### Sprint 8 — Authentication & Session Engine
 
 * Platform authentication
 * Session Manager
@@ -330,15 +370,26 @@ Launch Modules
 * Security Center
 * Session-aware module authorization
 
+### Sprint 9 — Native Module Integration
+
+* VaultModule contract
+* Platform Event Bus
+* Native Document Vault module
+* Dynamic dashboard metadata
+* Module lifecycle management
+* Platform service integration
+* Event-driven architecture
+
 ---
 
 # Roadmap
 
-## In Progress
+## Current Focus
 
-* Deeper integration between Document Vault and VaultCore
-* Removal of duplicated standalone authentication
-* Shared service adoption across modules
+* Complete Document Vault platform integration
+* Login bypass through platform session
+* Remove remaining standalone assumptions
+* Continue VaultCore service adoption
 
 ## Planned Modules
 
@@ -378,29 +429,42 @@ python app.py
 
 # Repository Status
 
-**Current Version:** 0.2.0
+**Current Version:** v0.3.0
 
 **Status:** Active Development
 
-**Architecture:** VaultCore + Modular Platform
+**Architecture:** VaultCore + Modular Platform + Event-Driven Module Framework
 
 **License:** MIT
 
 ---
 
-## Philosophy
+# Philosophy
 
 > If a capability can be shared across multiple secure applications, it belongs in **VaultCore**.
 
 > If a capability is unique to a specific application, it belongs in the **module**.
 
-This separation enables Secure Vault Platform to grow into a scalable ecosystem of privacy-first desktop applications while maintaining a clean, consistent, and secure architecture.
-## Owner
+This separation enables Secure Vault Platform to evolve into a scalable ecosystem of secure desktop applications while maintaining consistency, maintainability, and strong security guarantees.
+
+---
+
+# Owner
 
 **Raghavendra Singh**
 
 Engineering Student • Software Developer • Privacy-First Systems Enthusiast
 
-Secure Vault Platform is a long-term personal project focused on building a modular ecosystem of secure, offline desktop applications. The platform is designed around reusable infrastructure through **VaultCore**, enabling multiple privacy-focused applications to share authentication, encryption, storage, and other core services.
+Secure Vault Platform is a long-term open-source project focused on building a modular ecosystem of secure, offline desktop applications. Through VaultCore, the platform provides reusable infrastructure for authentication, encryption, storage, settings, lifecycle management, and module communication, allowing each application to focus exclusively on its domain logic.
 
-GitHub: https://github.com/raghavendrashivam474
+**GitHub:** https://github.com/raghavendrashivam474
+
+---
+
+# Version History
+
+| Version    | Description                                                                   |
+| ---------- | ----------------------------------------------------------------------------- |
+| **v0.1.0** | VaultCore foundation and platform infrastructure                              |
+| **v0.2.0** | Platform authentication, session engine, Security Center                      |
+| **v0.3.0** | Native module integration, VaultModule contract, Event Bus, dynamic dashboard |
