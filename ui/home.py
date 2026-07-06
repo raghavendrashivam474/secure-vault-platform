@@ -2,9 +2,7 @@
 ui/home.py
 
 Platform Dashboard for the Secure Vault Platform.
-
-Displayed after successful platform authentication.
-Shows all registered modules and platform navigation.
+Updated in Sprint 9 to display dynamic module metadata.
 """
 
 import tkinter as tk
@@ -16,12 +14,17 @@ from vaultcore.session import SessionManager
 from vaultcore.theme import Theme
 
 
+HEALTH_COLOURS = {
+    "healthy": Theme.SUCCESS,
+    "warning": Theme.WARNING,
+    "error":   Theme.ERROR,
+    "unknown": Theme.SUBTLE,
+}
+
+
 class PlatformHome(tk.Frame):
     """
-    The authenticated platform dashboard.
-
-    Displays module cards, session info,
-    and platform navigation options.
+    The authenticated platform dashboard with dynamic module cards.
     """
 
     def __init__(
@@ -35,19 +38,6 @@ class PlatformHome(tk.Frame):
         on_lock: Callable,
         on_exit: Callable
     ) -> None:
-        """
-        Initialize the platform dashboard.
-
-        Args:
-            parent:          The parent widget.
-            module_manager:  The platform module registry.
-            session_manager: The platform session manager.
-            on_settings:     Open platform settings callback.
-            on_security:     Open security center callback.
-            on_about:        Open about screen callback.
-            on_lock:         Lock the platform callback.
-            on_exit:         Exit the platform callback.
-        """
         super().__init__(parent, bg=Theme.BACKGROUND)
         self._module_manager  = module_manager
         self._session_manager = session_manager
@@ -59,14 +49,12 @@ class PlatformHome(tk.Frame):
         self._build()
 
     def _build(self) -> None:
-        """Construct the platform dashboard layout."""
         self.pack(fill="both", expand=True)
         self._build_header()
         self._build_body()
         self._build_footer()
 
     def _build_header(self) -> None:
-        """Build the top header bar."""
         header = tk.Frame(self, bg=Theme.PANEL, height=70)
         header.pack(fill="x")
         header.pack_propagate(False)
@@ -90,10 +78,13 @@ class PlatformHome(tk.Frame):
             fg=Theme.TEXT
         ).pack(anchor="w")
 
-        session = self._session_manager.get_session()
+        session    = self._session_manager.get_session()
         login_info = ""
         if session:
-            login_info = f"Authenticated  •  Session started {session.formatted_login_time()}"
+            login_info = (
+                f"Authenticated  •  "
+                f"Session started {session.formatted_login_time()}"
+            )
 
         tk.Label(
             title_frame,
@@ -103,84 +94,32 @@ class PlatformHome(tk.Frame):
             fg=Theme.SUBTLE
         ).pack(anchor="w")
 
-        # Right side buttons
-        tk.Button(
-            header,
-            text="🔒  Lock",
-            font=Theme.FONT_BODY,
-            bg=Theme.HIGHLIGHT,
-            fg="#ffffff",
-            activebackground=Theme.ACCENT,
-            activeforeground=Theme.TEXT,
-            relief="flat",
-            padx=14,
-            pady=6,
-            cursor="hand2",
-            command=self._on_lock
-        ).pack(side="right", padx=12, pady=16)
-
-        tk.Button(
-            header,
-            text="Exit",
-            font=Theme.FONT_BODY,
-            bg=Theme.PANEL,
-            fg=Theme.SUBTLE,
-            activebackground=Theme.ACCENT,
-            activeforeground=Theme.TEXT,
-            relief="flat",
-            padx=14,
-            pady=6,
-            cursor="hand2",
-            command=self._on_exit
-        ).pack(side="right", padx=(0, 4), pady=16)
-
-        tk.Button(
-            header,
-            text="ℹ  About",
-            font=Theme.FONT_BODY,
-            bg=Theme.PANEL,
-            fg=Theme.SUBTLE,
-            activebackground=Theme.ACCENT,
-            activeforeground=Theme.TEXT,
-            relief="flat",
-            padx=14,
-            pady=6,
-            cursor="hand2",
-            command=self._on_about
-        ).pack(side="right", padx=(0, 4), pady=16)
-
-        tk.Button(
-            header,
-            text="🛡  Security",
-            font=Theme.FONT_BODY,
-            bg=Theme.ACCENT,
-            fg=Theme.TEXT,
-            activebackground=Theme.HIGHLIGHT,
-            activeforeground="#ffffff",
-            relief="flat",
-            padx=14,
-            pady=6,
-            cursor="hand2",
-            command=self._on_security
-        ).pack(side="right", padx=(0, 4), pady=16)
-
-        tk.Button(
-            header,
-            text="⚙  Settings",
-            font=Theme.FONT_BODY,
-            bg=Theme.ACCENT,
-            fg=Theme.TEXT,
-            activebackground=Theme.HIGHLIGHT,
-            activeforeground="#ffffff",
-            relief="flat",
-            padx=14,
-            pady=6,
-            cursor="hand2",
-            command=self._on_settings
-        ).pack(side="right", padx=(0, 4), pady=16)
+        for text, command, bg in [
+            ("🔒  Lock",    self._on_lock,     Theme.HIGHLIGHT),
+            ("Exit",        self._on_exit,     Theme.PANEL),
+            ("ℹ  About",   self._on_about,    Theme.PANEL),
+            ("🛡  Security",self._on_security, Theme.ACCENT),
+            ("⚙  Settings", self._on_settings, Theme.ACCENT),
+        ]:
+            fg = "#ffffff" if bg == Theme.HIGHLIGHT else (
+                Theme.SUBTLE if bg == Theme.PANEL else Theme.TEXT
+            )
+            tk.Button(
+                header,
+                text=text,
+                font=Theme.FONT_BODY,
+                bg=bg,
+                fg=fg,
+                activebackground=Theme.ACCENT,
+                activeforeground=Theme.TEXT,
+                relief="flat",
+                padx=14,
+                pady=6,
+                cursor="hand2",
+                command=command
+            ).pack(side="right", padx=(0, 6), pady=16)
 
     def _build_body(self) -> None:
-        """Build the module grid area."""
         body = tk.Frame(self, bg=Theme.BACKGROUND)
         body.pack(fill="both", expand=True, padx=40, pady=30)
 
@@ -192,12 +131,18 @@ class PlatformHome(tk.Frame):
             fg=Theme.TEXT
         ).pack(anchor="w", pady=(0, 20))
 
-        grid = tk.Frame(body, bg=Theme.BACKGROUND)
+        grid    = tk.Frame(body, bg=Theme.BACKGROUND)
         grid.pack(fill="both", expand=True)
-
         modules = self._module_manager.get_all()
+
         for col, module in enumerate(modules):
-            self._render_module_card(grid, module, col)
+            metadata = None
+            if module.vault_module is not None:
+                try:
+                    metadata = module.vault_module.metadata()
+                except Exception:
+                    pass
+            self._render_module_card(grid, module, col, metadata)
 
         grid.columnconfigure(
             tuple(range(max(len(modules), 1))), weight=1
@@ -207,24 +152,19 @@ class PlatformHome(tk.Frame):
         self,
         parent: tk.Widget,
         module: ModuleDefinition,
-        column: int
+        column: int,
+        metadata=None
     ) -> None:
-        """Render a single module card."""
-        card = tk.Frame(
-            parent,
-            bg=Theme.PANEL,
-            padx=28,
-            pady=28
-        )
+        card = tk.Frame(parent, bg=Theme.PANEL, padx=24, pady=24)
         card.grid(row=0, column=column, padx=12, pady=8, sticky="nsew")
 
         tk.Label(
             card,
             text=module.icon,
-            font=("Segoe UI", 36),
+            font=("Segoe UI", 34),
             bg=Theme.PANEL,
             fg=Theme.TEXT
-        ).pack(pady=(0, 10))
+        ).pack(pady=(0, 8))
 
         tk.Label(
             card,
@@ -242,15 +182,49 @@ class PlatformHome(tk.Frame):
             fg=Theme.SUBTLE
         ).pack(pady=(2, 8))
 
-        tk.Label(
-            card,
-            text=module.description,
-            font=Theme.FONT_SMALL,
-            bg=Theme.PANEL,
-            fg=Theme.SUBTLE,
-            wraplength=200,
-            justify="center"
-        ).pack(pady=(0, 16))
+        if metadata is not None:
+            # Dynamic metadata display
+            health_colour = HEALTH_COLOURS.get(metadata.health, Theme.SUBTLE)
+
+            tk.Label(
+                card,
+                text=f"● {metadata.health.capitalize()}",
+                font=Theme.FONT_SMALL,
+                bg=Theme.PANEL,
+                fg=health_colour
+            ).pack(pady=(0, 6))
+
+            stats_text = (
+                f"📄 {metadata.document_count} docs  "
+                f"🗂 {metadata.category_count} cats  "
+                f"💾 {metadata.formatted_storage()}"
+            )
+            tk.Label(
+                card,
+                text=stats_text,
+                font=Theme.FONT_SMALL,
+                bg=Theme.PANEL,
+                fg=Theme.SUBTLE
+            ).pack(pady=(0, 4))
+
+            if metadata.last_backup and metadata.last_backup != "Never":
+                tk.Label(
+                    card,
+                    text=f"Backup: {metadata.last_backup}",
+                    font=Theme.FONT_SMALL,
+                    bg=Theme.PANEL,
+                    fg=Theme.SUBTLE
+                ).pack(pady=(0, 8))
+        else:
+            tk.Label(
+                card,
+                text=module.description,
+                font=Theme.FONT_SMALL,
+                bg=Theme.PANEL,
+                fg=Theme.SUBTLE,
+                wraplength=180,
+                justify="center"
+            ).pack(pady=(0, 16))
 
         if module.available:
             tk.Button(
@@ -265,9 +239,9 @@ class PlatformHome(tk.Frame):
                 padx=24,
                 pady=8,
                 cursor="hand2",
-                width=16,
+                width=14,
                 command=lambda m=module: self._launch_module(m)
-            ).pack()
+            ).pack(pady=(8, 0))
         else:
             tk.Label(
                 card,
@@ -277,14 +251,12 @@ class PlatformHome(tk.Frame):
                 fg=Theme.SUBTLE,
                 padx=24,
                 pady=8
-            ).pack()
+            ).pack(pady=(8, 0))
 
     def _launch_module(self, module: ModuleDefinition) -> None:
-        """Launch a module via the module manager."""
         self._module_manager.launch(module.id)
 
     def _build_footer(self) -> None:
-        """Build the bottom status bar."""
         footer = tk.Frame(self, bg=Theme.PANEL, height=32)
         footer.pack(fill="x", side="bottom")
         footer.pack_propagate(False)

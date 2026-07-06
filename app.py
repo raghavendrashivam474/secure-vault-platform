@@ -1,20 +1,20 @@
 ﻿"""
 app.py
 
-Secure Vault Platform — Entry Point.
-
-Sprint 8: Platform authentication, session management,
-activity monitoring, auto-lock, security center,
-and shared settings integrated.
+Secure Vault Platform - Entry Point.
+Sprint 9: Native module integration, Event Bus, VaultModule contract.
 """
 
 import tkinter as tk
-import subprocess
 import sys
+import os
 from pathlib import Path
 from datetime import datetime, timedelta
 
-from vaultcore.config import PLATFORM_NAME, PLATFORM_VERSION, DEFAULT_GEOMETRY, MIN_WIDTH, MIN_HEIGHT
+from vaultcore.config import (
+    PLATFORM_NAME, PLATFORM_VERSION,
+    DEFAULT_GEOMETRY, MIN_WIDTH, MIN_HEIGHT
+)
 from vaultcore.logger import log_info, log_event, log_error
 from vaultcore.module_manager import ModuleManager, ModuleDefinition
 from vaultcore.notifications import NotificationService
@@ -24,6 +24,9 @@ from vaultcore.session import SessionManager
 from vaultcore.activity_monitor import ActivityMonitor
 from vaultcore.settings_service import SettingsService
 from vaultcore.backup import create_backup, BACKUP_FOLDER
+from vaultcore.event_bus import platform_bus, Events
+
+from modules.document_vault.module import DocumentVaultModule
 
 from ui.login import PlatformLoginScreen
 from ui.home import PlatformHome
@@ -33,16 +36,10 @@ from ui.platform_settings import PlatformSettingsScreen
 
 
 class SecureVaultPlatform:
-    """
-    Root platform controller.
-
-    Manages the full platform lifecycle including
-    initialization, authentication, session management,
-    activity monitoring, module launching, and shutdown.
-    """
+    """Root platform controller."""
 
     def __init__(self) -> None:
-        """Initialize all platform services and show login."""
+        """Initialize all platform services."""
         log_info(f"Starting {PLATFORM_NAME} v{PLATFORM_VERSION}")
 
         self._root = tk.Tk()
@@ -51,7 +48,6 @@ class SecureVaultPlatform:
         self._root.minsize(MIN_WIDTH, MIN_HEIGHT)
         Theme.apply_to_root(self._root)
 
-        # Initialize shared services
         initialize_database()
 
         self._session_manager  = SessionManager()
@@ -59,41 +55,66 @@ class SecureVaultPlatform:
         self._notifications    = NotificationService(self._root)
         self._module_manager   = ModuleManager()
 
-        # Activity monitor with lock callback
         self._activity_monitor = ActivityMonitor(
             root            = self._root,
             session_manager = self._session_manager,
             on_lock         = self._handle_auto_lock
         )
 
-        # Apply saved auto-lock setting
         seconds = self._settings_service.get_auto_lock_seconds()
         self._activity_monitor.set_idle_timeout(seconds)
 
-        # Register modules
+        self._setup_event_listeners()
         self._register_modules()
-
-        # Handle auto-backup check
         self._check_auto_backup()
-
-        # Show platform login
         self._show_login()
 
-        # Safe shutdown on window close
         self._root.protocol("WM_DELETE_WINDOW", self._handle_exit)
-
         log_event("PlatformReady", PLATFORM_NAME)
+
+    def _setup_event_listeners(self) -> None:
+        """Register platform-level Event Bus listeners."""
+
+        def on_module_started(event: str, data: dict) -> None:
+            name = data.get("name", "Module")
+            self._notifications.success(f"{name} opened.")
+
+        def on_module_closed(event: str, data: dict) -> None:
+            module_id = data.get("module_id", "")
+            log_event("EventBus", f"Module closed: {module_id}")
+
+        def on_document_imported(event: str, data: dict) -> None:
+            name = data.get("name", "Document")
+            self._notifications.success(f"Imported: {name}")
+
+        def on_backup_created(event: str, data: dict) -> None:
+            self._notifications.success("Backup created successfully.")
+
+        def on_export_complete(event: str, data: dict) -> None:
+            count = data.get("count", 0)
+            self._notifications.success(f"Export complete: {count} file(s).")
+
+        platform_bus.subscribe(Events.MODULE_STARTED,    on_module_started)
+        platform_bus.subscribe(Events.MODULE_CLOSED,     on_module_closed)
+        platform_bus.subscribe(Events.DOCUMENT_IMPORTED, on_document_imported)
+        platform_bus.subscribe(Events.BACKUP_CREATED,    on_backup_created)
+        platform_bus.subscribe(Events.DOCUMENT_EXPORTED, on_export_complete)
+
+        log_info("Event Bus listeners registered.")
 
     def _register_modules(self) -> None:
         """Register all platform modules."""
+        self._doc_vault_module = DocumentVaultModule()
+
         self._module_manager.register(ModuleDefinition(
-            id          = "document_vault",
-            name        = "Document Vault",
-            description = "Securely store, organize, and manage\npersonal documents offline.",
-            icon        = "📄",
-            version     = "1.0.0",
-            available   = True,
-            launcher    = self._launch_document_vault
+            id           = "document_vault",
+            name         = "Document Vault",
+            description  = "Securely store, organize, and manage\npersonal documents offline.",
+            icon         = "📄",
+            version      = "1.0.0",
+            available    = True,
+            launcher     = self._launch_document_vault,
+            vault_module = self._doc_vault_module
         ))
 
         self._module_manager.register(ModuleDefinition(
@@ -102,8 +123,7 @@ class SecureVaultPlatform:
             description = "Encrypted password manager\nwith secure generation.",
             icon        = "🔒",
             version     = "0.0.0",
-            available   = False,
-            launcher    = None
+            available   = False
         ))
 
         self._module_manager.register(ModuleDefinition(
@@ -112,8 +132,7 @@ class SecureVaultPlatform:
             description = "Encrypted file archive\nwith compression support.",
             icon        = "📦",
             version     = "0.0.0",
-            available   = False,
-            launcher    = None
+            available   = False
         ))
 
         self._module_manager.register(ModuleDefinition(
@@ -122,50 +141,29 @@ class SecureVaultPlatform:
             description = "Private encrypted notes\nwith rich text support.",
             icon        = "📝",
             version     = "0.0.0",
-            available   = False,
-            launcher    = None
+            available   = False
         ))
 
         log_info(f"Registered {len(self._module_manager.get_all())} modules")
 
     def _launch_document_vault(self) -> None:
-        """
-        Launch the Document Vault module as a subprocess.
-
-        The session master password is passed as an environment
-        variable so Document Vault can skip its own login screen.
-        """
-        pdv_path = Path(
-            r"C:\Users\ragha\Documents\Temp_Workspace\PersonalDocumentVault\app.py"
-        )
-
-        if not pdv_path.exists():
-            log_error(f"Document Vault not found: {pdv_path}")
-            self._notifications.error("Document Vault not found.")
-            return
-
+        """Initialize and launch Document Vault."""
         if not self._session_manager.is_authenticated():
             self._notifications.error("Platform not authenticated.")
             return
 
-        try:
-            import os
-            env = os.environ.copy()
-            env["SVP_MASTER_PASSWORD"] = self._session_manager.get_master_password()
-            env["SVP_AUTHENTICATED"]   = "1"
+        password = self._session_manager.get_master_password()
 
-            log_event("ModuleLaunching", "Document Vault")
-            subprocess.Popen(
-                [sys.executable, str(pdv_path)],
-                cwd = str(pdv_path.parent),
-                env = env
-            )
-            self._notifications.success("Document Vault opened.")
-            log_event("ModuleLaunched", "Document Vault")
+        if not password:
+            self._notifications.error("No active session password.")
+            return
 
-        except Exception as error:
-            log_error(f"Failed to launch Document Vault: {error}")
-            self._notifications.error("Failed to open Document Vault.")
+        # Initialize directly on the stored module instance
+        self._doc_vault_module._master_password = password
+        self._doc_vault_module._initialized     = True
+
+        log_event("ModuleInitializing", "Document Vault")
+        self._doc_vault_module.launch()
 
     def _clear_screen(self) -> None:
         """Remove all widgets from the window."""
@@ -230,7 +228,8 @@ class SecureVaultPlatform:
         )
 
     def _handle_lock(self) -> None:
-        """Lock the platform and return to login."""
+        """Lock the platform and all modules."""
+        self._module_manager.lock_all()
         self._session_manager.lock()
         self._activity_monitor.stop()
         log_event("PlatformLocked", "User initiated")
@@ -239,31 +238,26 @@ class SecureVaultPlatform:
 
     def _handle_auto_lock(self) -> None:
         """Handle auto-lock triggered by idle timeout."""
+        self._module_manager.lock_all()
         log_event("AutoLockTriggered", "Idle timeout")
         self._show_login()
 
     def _handle_exit(self) -> None:
-        """
-        Safely shut down the platform.
-
-        Destroys session, clears sensitive data,
-        writes final log entries, and exits.
-        """
+        """Safely shut down the platform."""
         log_event("PlatformShutdown", "User initiated exit")
         self._activity_monitor.stop()
+        self._module_manager.shutdown_all()
         self._session_manager.destroy_session()
-        log_info("Session destroyed. Platform exiting.")
+        log_info("Platform shutdown complete.")
         self._root.quit()
 
     def _check_auto_backup(self) -> None:
         """Check whether an automatic backup is due."""
         frequency = self._settings_service.get("backup_frequency")
-
         if frequency == "Never":
             return
 
         last_str = self._settings_service.get("last_backup_date")
-
         if not last_str:
             return
 
@@ -286,10 +280,13 @@ class SecureVaultPlatform:
                     success, message = create_backup(password, BACKUP_FOLDER)
                     if success:
                         self._settings_service.set(
-                            "last_backup_date", datetime.now().isoformat()
+                            "last_backup_date",
+                            datetime.now().isoformat()
                         )
-                        log_event("AutoBackup", "Backup created successfully")
-
+                        platform_bus.publish(Events.BACKUP_CREATED, {
+                            "path": message
+                        })
+                        log_event("AutoBackup", "Backup created")
         except Exception as error:
             log_error(f"Auto-backup check failed: {error}")
 
