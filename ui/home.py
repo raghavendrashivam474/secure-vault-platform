@@ -2,11 +2,11 @@
 ui/home.py
 
 Platform Dashboard for the Secure Vault Platform.
-Updated in Sprint 9 to display dynamic module metadata.
+Updated in Sprint 10 with storage dashboard link.
 """
 
 import tkinter as tk
-from typing import Callable
+from typing import Callable, Optional
 
 from vaultcore.config import PLATFORM_NAME, PLATFORM_VERSION
 from vaultcore.module_manager import ModuleManager, ModuleDefinition
@@ -23,9 +23,7 @@ HEALTH_COLOURS = {
 
 
 class PlatformHome(tk.Frame):
-    """
-    The authenticated platform dashboard with dynamic module cards.
-    """
+    """The authenticated platform dashboard with dynamic module cards."""
 
     def __init__(
         self,
@@ -36,7 +34,8 @@ class PlatformHome(tk.Frame):
         on_security: Callable,
         on_about: Callable,
         on_lock: Callable,
-        on_exit: Callable
+        on_exit: Callable,
+        on_storage: Optional[Callable] = None
     ) -> None:
         super().__init__(parent, bg=Theme.BACKGROUND)
         self._module_manager  = module_manager
@@ -46,6 +45,7 @@ class PlatformHome(tk.Frame):
         self._on_about        = on_about
         self._on_lock         = on_lock
         self._on_exit         = on_exit
+        self._on_storage      = on_storage
         self._build()
 
     def _build(self) -> None:
@@ -94,16 +94,21 @@ class PlatformHome(tk.Frame):
             fg=Theme.SUBTLE
         ).pack(anchor="w")
 
-        for text, command, bg in [
-            ("🔒  Lock",    self._on_lock,     Theme.HIGHLIGHT),
-            ("Exit",        self._on_exit,     Theme.PANEL),
-            ("ℹ  About",   self._on_about,    Theme.PANEL),
-            ("🛡  Security",self._on_security, Theme.ACCENT),
-            ("⚙  Settings", self._on_settings, Theme.ACCENT),
-        ]:
-            fg = "#ffffff" if bg == Theme.HIGHLIGHT else (
-                Theme.SUBTLE if bg == Theme.PANEL else Theme.TEXT
-            )
+        # Right side buttons
+        buttons = [
+            ("🔒  Lock",     self._on_lock,     Theme.HIGHLIGHT, "#ffffff"),
+            ("Exit",         self._on_exit,     Theme.PANEL,     Theme.SUBTLE),
+            ("ℹ  About",    self._on_about,    Theme.PANEL,     Theme.SUBTLE),
+            ("🛡  Security", self._on_security, Theme.ACCENT,    Theme.TEXT),
+            ("⚙  Settings", self._on_settings, Theme.ACCENT,    Theme.TEXT),
+        ]
+
+        if self._on_storage:
+            buttons.insert(3, (
+                "💾  Storage", self._on_storage, Theme.ACCENT, Theme.TEXT
+            ))
+
+        for text, command, bg, fg in buttons:
             tk.Button(
                 header,
                 text=text,
@@ -113,11 +118,11 @@ class PlatformHome(tk.Frame):
                 activebackground=Theme.ACCENT,
                 activeforeground=Theme.TEXT,
                 relief="flat",
-                padx=14,
+                padx=12,
                 pady=6,
                 cursor="hand2",
                 command=command
-            ).pack(side="right", padx=(0, 6), pady=16)
+            ).pack(side="right", padx=(0, 4), pady=16)
 
     def _build_body(self) -> None:
         body = tk.Frame(self, bg=Theme.BACKGROUND)
@@ -183,7 +188,6 @@ class PlatformHome(tk.Frame):
         ).pack(pady=(2, 8))
 
         if metadata is not None:
-            # Dynamic metadata display
             health_colour = HEALTH_COLOURS.get(metadata.health, Theme.SUBTLE)
 
             tk.Label(

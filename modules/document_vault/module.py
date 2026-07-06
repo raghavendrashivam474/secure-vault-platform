@@ -127,9 +127,52 @@ class DocumentVaultModule(VaultModule):
     def metadata(self) -> ModuleMetadata:
         """Return current module metadata."""
         try:
-            stats        = get_vault_statistics()
+            # Read from Personal Document Vault database
+            import sqlite3
+            from pathlib import Path
+            pdv_db = Path(r"C:\Users\ragha\Documents\Temp_Workspace\PersonalDocumentVault\database\vault.db")
+
+            doc_count = 0
+            cat_count = 0
+            integrity_issues = 0
+            expired_count = 0
+
+            if pdv_db.exists():
+                con = sqlite3.connect(pdv_db)
+                cur = con.cursor()
+                try:
+                    cur.execute("SELECT COUNT(*) FROM documents")
+                    doc_count = cur.fetchone()[0]
+                    cur.execute("SELECT COUNT(*) FROM categories")
+                    cat_count = cur.fetchone()[0]
+                    cur.execute("SELECT COUNT(*) FROM documents WHERE integrity_status = 0")
+                    integrity_issues = cur.fetchone()[0]
+                    cur.execute("SELECT COUNT(*) FROM documents WHERE expiry_date IS NOT NULL AND expiry_date < date('now')")
+                    expired_count = cur.fetchone()[0]
+                except Exception:
+                    pass
+                con.close()
+
+            # Storage from PDV database (only tracked documents)
+            storage_used = 0
+            if pdv_db.exists():
+                con = sqlite3.connect(pdv_db)
+                cur = con.cursor()
+                try:
+                    cur.execute("SELECT SUM(file_size) FROM documents")
+                    result = cur.fetchone()[0]
+                    storage_used = result if result else 0
+                except Exception:
+                    pass
+                con.close()
+
+            stats = {
+                "document_count": doc_count,
+                "category_count": cat_count,
+                "integrity_issues": integrity_issues,
+                "expired_count": expired_count
+            }
             last_backup  = get_latest_backup_date() or "Never"
-            storage_used = get_vault_size()
 
             return ModuleMetadata(
                 module_id      = self.module_id,
@@ -169,3 +212,5 @@ class DocumentVaultModule(VaultModule):
         if self._process is None:
             return False
         return self._process.poll() is None
+
+

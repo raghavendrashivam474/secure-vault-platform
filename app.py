@@ -2,7 +2,7 @@
 app.py
 
 Secure Vault Platform - Entry Point.
-Sprint 9: Native module integration, Event Bus, VaultModule contract.
+Sprint 10: Shared storage infrastructure integrated.
 """
 
 import tkinter as tk
@@ -23,8 +23,15 @@ from vaultcore.database import initialize_database
 from vaultcore.session import SessionManager
 from vaultcore.activity_monitor import ActivityMonitor
 from vaultcore.settings_service import SettingsService
-from vaultcore.backup import create_backup, BACKUP_FOLDER
 from vaultcore.event_bus import platform_bus, Events
+
+from vaultcore.vault_filesystem import VaultFilesystem
+from vaultcore.storage_manager import StorageManager
+from vaultcore.workspace_manager import WorkspaceManager
+from vaultcore.storage_index import initialize_storage_index
+from vaultcore.metadata_service import MetadataService
+from vaultcore.backup_manager import BackupManager
+from vaultcore.storage_health import StorageHealthService
 
 from modules.document_vault.module import DocumentVaultModule
 
@@ -33,13 +40,18 @@ from ui.home import PlatformHome
 from ui.about import AboutScreen
 from ui.security_center import SecurityCenter
 from ui.platform_settings import PlatformSettingsScreen
+from ui.storage_dashboard import StorageDashboard
 
 
 class SecureVaultPlatform:
-    """Root platform controller."""
+    """
+    Root platform controller.
+
+    Sprint 10: Full storage infrastructure integrated.
+    """
 
     def __init__(self) -> None:
-        """Initialize all platform services."""
+        """Initialize all platform services including storage."""
         log_info(f"Starting {PLATFORM_NAME} v{PLATFORM_VERSION}")
 
         self._root = tk.Tk()
@@ -48,13 +60,27 @@ class SecureVaultPlatform:
         self._root.minsize(MIN_WIDTH, MIN_HEIGHT)
         Theme.apply_to_root(self._root)
 
+        # Core services
         initialize_database()
+        initialize_storage_index()
 
         self._session_manager  = SessionManager()
         self._settings_service = SettingsService()
         self._notifications    = NotificationService(self._root)
         self._module_manager   = ModuleManager()
 
+        # Storage infrastructure
+        self._filesystem       = VaultFilesystem()
+        self._storage_manager  = StorageManager(self._filesystem)
+        self._workspace_manager = WorkspaceManager(self._filesystem)
+        self._metadata_service = MetadataService()
+        self._backup_manager   = BackupManager()
+        self._health_service   = StorageHealthService(self._filesystem)
+
+        # Provision platform directories
+        self._filesystem.provision_platform()
+
+        # Activity monitor
         self._activity_monitor = ActivityMonitor(
             root            = self._root,
             session_manager = self._session_manager,
@@ -81,6 +107,7 @@ class SecureVaultPlatform:
 
         def on_module_closed(event: str, data: dict) -> None:
             module_id = data.get("module_id", "")
+            self._workspace_manager.cleanup_module(module_id)
             log_event("EventBus", f"Module closed: {module_id}")
 
         def on_document_imported(event: str, data: dict) -> None:
@@ -103,7 +130,7 @@ class SecureVaultPlatform:
         log_info("Event Bus listeners registered.")
 
     def _register_modules(self) -> None:
-        """Register all platform modules."""
+        """Register and provision all platform modules."""
         self._doc_vault_module = DocumentVaultModule()
 
         self._module_manager.register(ModuleDefinition(
@@ -144,6 +171,9 @@ class SecureVaultPlatform:
             available   = False
         ))
 
+        # Provision storage for all available modules
+        self._storage_manager.provision_module("document_vault")
+
         log_info(f"Registered {len(self._module_manager.get_all())} modules")
 
     def _launch_document_vault(self) -> None:
@@ -158,7 +188,6 @@ class SecureVaultPlatform:
             self._notifications.error("No active session password.")
             return
 
-        # Initialize directly on the stored module instance
         self._doc_vault_module._master_password = password
         self._doc_vault_module._initialized     = True
 
@@ -196,7 +225,8 @@ class SecureVaultPlatform:
             on_security     = self._show_security_center,
             on_about        = self._show_about,
             on_lock         = self._handle_lock,
-            on_exit         = self._handle_exit
+            on_exit         = self._handle_exit,
+            on_storage      = self._show_storage_dashboard
         )
 
     def _show_settings(self) -> None:
@@ -210,13 +240,22 @@ class SecureVaultPlatform:
         )
 
     def _show_security_center(self) -> None:
-        """Display the security center."""
+        """Display the security center with storage link."""
         self._clear_screen()
         SecurityCenter(
             parent           = self._root,
             session_manager  = self._session_manager,
             settings_service = self._settings_service,
             on_close         = self._show_dashboard
+        )
+
+    def _show_storage_dashboard(self) -> None:
+        """Display the storage health dashboard."""
+        self._clear_screen()
+        StorageDashboard(
+            parent         = self._root,
+            health_service = self._health_service,
+            on_close       = self._show_dashboard
         )
 
     def _show_about(self) -> None:
@@ -246,6 +285,7 @@ class SecureVaultPlatform:
         """Safely shut down the platform."""
         log_event("PlatformShutdown", "User initiated exit")
         self._activity_monitor.stop()
+        self._workspace_manager.cleanup_all()
         self._module_manager.shutdown_all()
         self._session_manager.destroy_session()
         log_info("Platform shutdown complete.")
@@ -253,42 +293,18 @@ class SecureVaultPlatform:
 
     def _check_auto_backup(self) -> None:
         """Check whether an automatic backup is due."""
-        frequency = self._settings_service.get("backup_frequency")
-        if frequency == "Never":
-            return
+        frequency   = self._settings_service.get("backup_frequency")
+        last_backup = self._settings_service.get("last_backup_date")
 
-        last_str = self._settings_service.get("last_backup_date")
-        if not last_str:
-            return
-
-        try:
-            last  = datetime.fromisoformat(last_str)
-            now   = datetime.now()
-            delta = now - last
-            due   = False
-
-            if frequency == "Daily"   and delta >= timedelta(days=1):
-                due = True
-            elif frequency == "Weekly"  and delta >= timedelta(weeks=1):
-                due = True
-            elif frequency == "Monthly" and delta >= timedelta(days=30):
-                due = True
-
-            if due:
-                password = self._session_manager.get_master_password()
-                if password:
-                    success, message = create_backup(password, BACKUP_FOLDER)
-                    if success:
-                        self._settings_service.set(
-                            "last_backup_date",
-                            datetime.now().isoformat()
-                        )
-                        platform_bus.publish(Events.BACKUP_CREATED, {
-                            "path": message
-                        })
-                        log_event("AutoBackup", "Backup created")
-        except Exception as error:
-            log_error(f"Auto-backup check failed: {error}")
+        if self._backup_manager.is_backup_due(frequency, last_backup):
+            password = self._session_manager.get_master_password()
+            if password:
+                success, message = self._backup_manager.create(password)
+                if success:
+                    self._settings_service.set(
+                        "last_backup_date",
+                        datetime.now().isoformat()
+                    )
 
     def run(self) -> None:
         """Start the Tkinter event loop."""
@@ -303,3 +319,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
