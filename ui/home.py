@@ -2,7 +2,7 @@
 ui/home.py
 
 Platform Dashboard for the Secure Vault Platform.
-Updated in Sprint 10 with storage dashboard link.
+Updated in Sprint 11 with Notifications and Activity buttons.
 """
 
 import tkinter as tk
@@ -35,17 +35,21 @@ class PlatformHome(tk.Frame):
         on_about: Callable,
         on_lock: Callable,
         on_exit: Callable,
-        on_storage: Optional[Callable] = None
+        on_storage: Optional[Callable] = None,
+        on_notifications: Optional[Callable] = None,
+        on_activity: Optional[Callable] = None
     ) -> None:
         super().__init__(parent, bg=Theme.BACKGROUND)
-        self._module_manager  = module_manager
-        self._session_manager = session_manager
-        self._on_settings     = on_settings
-        self._on_security     = on_security
-        self._on_about        = on_about
-        self._on_lock         = on_lock
-        self._on_exit         = on_exit
-        self._on_storage      = on_storage
+        self._module_manager   = module_manager
+        self._session_manager  = session_manager
+        self._on_settings      = on_settings
+        self._on_security      = on_security
+        self._on_about         = on_about
+        self._on_lock          = on_lock
+        self._on_exit          = on_exit
+        self._on_storage       = on_storage
+        self._on_notifications = on_notifications
+        self._on_activity      = on_activity
         self._build()
 
     def _build(self) -> None:
@@ -94,7 +98,6 @@ class PlatformHome(tk.Frame):
             fg=Theme.SUBTLE
         ).pack(anchor="w")
 
-        # Right side buttons
         buttons = [
             ("🔒  Lock",     self._on_lock,     Theme.HIGHLIGHT, "#ffffff"),
             ("Exit",         self._on_exit,     Theme.PANEL,     Theme.SUBTLE),
@@ -104,9 +107,13 @@ class PlatformHome(tk.Frame):
         ]
 
         if self._on_storage:
-            buttons.insert(3, (
-                "💾  Storage", self._on_storage, Theme.ACCENT, Theme.TEXT
-            ))
+            buttons.insert(3, ("💾  Storage", self._on_storage, Theme.ACCENT, Theme.TEXT))
+
+        if self._on_notifications:
+            buttons.insert(3, ("🔔  Notifications", self._on_notifications, Theme.ACCENT, Theme.TEXT))
+
+        if self._on_activity:
+            buttons.insert(3, ("🕒  Activity", self._on_activity, Theme.ACCENT, Theme.TEXT))
 
         for text, command, bg, fg in buttons:
             tk.Button(
@@ -118,7 +125,7 @@ class PlatformHome(tk.Frame):
                 activebackground=Theme.ACCENT,
                 activeforeground=Theme.TEXT,
                 relief="flat",
-                padx=12,
+                padx=10,
                 pady=6,
                 cursor="hand2",
                 command=command
