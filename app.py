@@ -47,6 +47,7 @@ from vaultcore.search_framework import SearchFramework
 from vaultcore.platform_actions import PlatformActions, register_platform_actions
 
 from modules.document_vault.module import DocumentVaultModule
+from modules.password_vault.module import PasswordVaultModule
 
 from ui.login import PlatformLoginScreen
 from ui.home import PlatformHome
@@ -74,6 +75,10 @@ class SecureVaultPlatform:
         # Core initialization
         initialize_database()
         initialize_storage_index()
+
+        # Initialize password vault database
+        from modules.password_vault.core.database import initialize_password_database
+        initialize_password_database()
 
         # Security Layer
         self._session_manager  = SessionManager()
@@ -178,8 +183,31 @@ class SecureVaultPlatform:
             vault_module = self._doc_vault_module
         ))
 
+        # Register Password Vault as native module
+        self._password_vault_module = PasswordVaultModule()
+        self._password_vault_module.inject_services(
+            parent_root         = self._root,
+            clipboard           = self._clipboard,
+            dialogs             = self._dialogs,
+            notifications       = self._notifications,
+            notification_center = self._notif_center,
+            activity_service    = self._activity_service,
+            recent_items        = self._recent_items,
+            storage_manager     = self._storage_manager
+        )
+
+        self._module_manager.register(ModuleDefinition(
+            id           = "password_vault",
+            name         = "Password Vault",
+            description  = "Encrypted password manager\nwith secure generation.",
+            icon         = "🔒",
+            version      = "1.0.0",
+            available    = True,
+            launcher     = self._launch_password_vault,
+            vault_module = self._password_vault_module
+        ))
+
         for definition in [
-            ("password_vault", "Password Vault",  "Encrypted password manager\nwith secure generation.", "🔒"),
             ("secure_archive", "Secure Archive",  "Encrypted file archive\nwith compression support.",   "📦"),
             ("secure_notes",   "Secure Notes",    "Private encrypted notes\nwith rich text support.",    "📝"),
         ]:
@@ -194,6 +222,7 @@ class SecureVaultPlatform:
             ))
 
         self._storage_manager.provision_module("document_vault")
+        self._storage_manager.provision_module("password_vault")
         log_info(f"Registered {len(self._module_manager.get_all())} modules")
 
     def _register_platform_commands(self) -> None:
@@ -228,6 +257,17 @@ class SecureVaultPlatform:
         log_event("ModuleInitializing", "Document Vault")
         self._doc_vault_module.launch()
 
+    def _launch_password_vault(self) -> None:
+        """Initialize and launch Password Vault."""
+        if not self._session_manager.is_authenticated():
+            self._notifications.error("Platform not authenticated.")
+            return
+        password = self._session_manager.get_master_password()
+        if not password:
+            return
+        self._password_vault_module.initialize(password)
+        self._password_vault_module.launch()
+
     def _clear_screen(self) -> None:
         for widget in self._root.winfo_children():
             widget.destroy()
@@ -242,6 +282,11 @@ class SecureVaultPlatform:
 
     def _on_authenticated(self) -> None:
         log_event("Authenticated", "Platform session active")
+        # Set session password on Password Vault
+        password = self._session_manager.get_master_password()
+        if hasattr(self, "_password_vault_module") and password:
+            self._password_vault_module._master_password = password
+            self._password_vault_module._initialized     = True
         self._notifications.success("Platform unlocked.")
         self._notif_center.add("Platform Unlocked", "Authentication successful.", "success")
         self._activity_service.record("PlatformUnlocked", "platform")
@@ -362,4 +407,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
 
