@@ -2,7 +2,7 @@
 
 A privacy-first, offline-first desktop platform for secure applications.
 
-Secure Vault Platform is the evolution of **Personal Document Vault** into a modular ecosystem powered by a shared infrastructure called **VaultCore**. Rather than every secure application implementing its own authentication, encryption, storage, lifecycle management, search, dialogs, clipboard handling, and other shared capabilities, VaultCore provides these services as reusable platform components while each module focuses exclusively on its own domain logic.
+Secure Vault Platform is the evolution of **Personal Document Vault** into a modular ecosystem powered by **VaultCore**. Rather than every secure application implementing its own authentication, encryption, storage, lifecycle management, search, dialogs, clipboard handling, notifications, and other common capabilities, VaultCore provides these services as reusable platform components while each module focuses exclusively on its own business logic.
 
 ---
 
@@ -56,7 +56,7 @@ Notifications                                       Storage Health        Permis
 
 Logging                                                                      Search Framework
 
-Theme                                                                        Import/Export Framework
+Theme                                                                        Import / Export Framework
 
 Database                                                                     Platform Actions
 
@@ -66,9 +66,9 @@ Database                                                                     Pla
 
          ▼                   ▼                    ▼                    ▼
 
-Document Vault        Password Vault       Secure Archive       Secure Notes
+ Document Vault      Password Vault       Secure Archive       Secure Notes
 
-     v1.0.0               Planned              Planned              Planned
+     v1.0.0              v0.1.0               Planned              Planned
 ```
 
 ---
@@ -77,16 +77,15 @@ Document Vault        Password Vault       Secure Archive       Secure Notes
 
 ## Security Layer
 
-Provides authentication and platform security.
+Provides platform-wide security.
 
 Features:
 
 * Master password authentication
-* Password hashing & verification
 * AES-256-GCM encryption
 * PBKDF2-HMAC-SHA256 key derivation
 * Session management
-* Idle activity monitoring
+* Activity monitoring
 * Automatic platform locking
 * Secure session destruction
 
@@ -94,7 +93,7 @@ Features:
 
 ## Application Layer
 
-Coordinates modules and platform communication.
+Coordinates module execution and communication.
 
 Features:
 
@@ -103,46 +102,44 @@ Features:
 * Module registration
 * Module discovery
 * Module lifecycle
-* Platform Event Bus
+* Event Bus
 * Dashboard integration
-* Dynamic module metadata
 * Session-aware module authorization
 
 ---
 
 ## Data Layer
 
-Provides shared storage infrastructure.
+Provides centralized storage infrastructure.
 
 Features:
 
 * Storage Manager
 * Vault Filesystem
-* Shared File API
 * Metadata Service
 * Storage Index
 * Backup Manager
 * Workspace Manager
-* Storage Health Service
-* Automatic module storage provisioning
+* Storage Health
+* Automatic module provisioning
 
 ---
 
 ## Platform Services Layer
 
-Provides reusable user-facing services shared by every module.
+Provides reusable services for every module.
 
 Features:
 
 * Clipboard Manager
 * Dialog Framework
 * Notification Center
-* Recent Activity Service
-* Recent Items Service
+* Recent Activity
+* Recent Items
 * Command Registry
 * Permission Manager
 * Search Framework
-* Import & Export Framework
+* Import / Export Framework
 * Platform Actions
 
 ---
@@ -152,7 +149,7 @@ Features:
 | Module            | Version | Status                 |
 | ----------------- | ------- | ---------------------- |
 | 📄 Document Vault | 1.0.0   | Native Platform Module |
-| 🔒 Password Vault | —       | Planned                |
+| 🔒 Password Vault | 0.1.0   | Native Platform Module |
 | 📦 Secure Archive | —       | Planned                |
 | 📝 Secure Notes   | —       | Planned                |
 
@@ -160,9 +157,9 @@ Features:
 
 # Document Vault
 
-Document Vault serves as the reference implementation of the **VaultModule** contract.
+Document Vault is the first secure application integrated into Secure Vault Platform.
 
-Current capabilities include:
+Capabilities include:
 
 * Secure encrypted document storage
 * Categories
@@ -174,11 +171,34 @@ Current capabilities include:
 * Export
 * Backup integration
 * Dynamic module metadata
-* Native module lifecycle
 * Shared storage infrastructure
 * Platform service integration
 
-It demonstrates how future modules should integrate with VaultCore while focusing solely on business logic.
+Originally developed as a standalone application, it now operates as a VaultCore-powered module.
+
+---
+
+# Password Vault
+
+Password Vault is the first module designed entirely around the VaultCore architecture.
+
+Unlike Document Vault, it was built natively for the platform and contains no duplicated infrastructure.
+
+Current capabilities include:
+
+* Secure encrypted password storage
+* Password generator
+* Password strength analyzer
+* Password categories
+* Secure reveal
+* Clipboard auto-clear integration
+* Dashboard statistics
+* Search support
+* Recent activity integration
+* Notification integration
+* Native VaultModule lifecycle
+
+Password Vault serves as the reference implementation for all future native modules.
 
 ---
 
@@ -213,7 +233,7 @@ Platform Login
 
 ↓
 
-VaultCore Authentication
+Authenticate User
 
 ↓
 
@@ -284,52 +304,25 @@ Session Destroyed
 SecureVaultPlatform/
 
 ├── app.py
-├── requirements.txt
 ├── README.md
 ├── CHANGELOG.md
 ├── LICENSE
+├── requirements.txt
 │
 ├── vaultcore/
-│   ├── authentication.py
-│   ├── activity_monitor.py
-│   ├── backup_manager.py
-│   ├── clipboard_manager.py
-│   ├── command_registry.py
-│   ├── config.py
-│   ├── database.py
-│   ├── dialog_framework.py
-│   ├── encryption.py
-│   ├── event_bus.py
-│   ├── hashing.py
-│   ├── import_export.py
-│   ├── logger.py
-│   ├── metadata_service.py
-│   ├── module_contract.py
-│   ├── module_manager.py
-│   ├── notification_center.py
-│   ├── notifications.py
-│   ├── permission_manager.py
-│   ├── platform_actions.py
-│   ├── recent_activity.py
-│   ├── recent_items.py
-│   ├── search_framework.py
-│   ├── session.py
-│   ├── settings_service.py
-│   ├── storage_health.py
-│   ├── storage_index.py
-│   ├── storage_manager.py
-│   ├── theme.py
-│   ├── vault_filesystem.py
-│   ├── validators.py
-│   └── workspace_manager.py
 │
 ├── modules/
-│   └── document_vault/
+│   ├── document_vault/
+│   ├── password_vault/
+│   │   ├── core/
+│   │   ├── models/
+│   │   ├── ui/
+│   │   └── module.py
+│   │
+│   ├── secure_archive/
+│   └── secure_notes/
 │
 ├── ui/
-│   ├── activity_panel.py
-│   └── notification_panel.py
-│
 ├── backups/
 ├── cache/
 ├── database/
@@ -393,9 +386,8 @@ SecureVaultPlatform/
 
 * VaultModule contract
 * Event Bus
-* Native module integration
-* Module lifecycle
-* Dynamic metadata
+* Native module lifecycle
+* Dynamic module metadata
 
 ### Sprint 10 — Data Layer
 
@@ -405,26 +397,35 @@ SecureVaultPlatform/
 * Backup Manager
 * Workspace Manager
 * Storage Health
-* Shared storage infrastructure
 
 ### Sprint 11 — Platform Services Layer
 
 * Clipboard Manager
 * Dialog Framework
 * Notification Center
-* Recent Activity Service
-* Recent Items Service
+* Recent Activity
+* Recent Items
 * Command Registry
 * Permission Manager
 * Search Framework
-* Import & Export Framework
+* Import / Export Framework
 * Platform Actions
-* Activity Panel
-* Notification Panel
+
+### Sprint 12 — Password Vault
+
+* Native Password Vault module
+* Password Entry model
+* Password categories
+* Password generator
+* Password strength analyzer
+* Secure password storage
+* Clipboard integration
+* Dashboard & statistics
+* Complete VaultCore integration
 
 ---
 
-# Platform Foundation Status
+# Platform Status
 
 | Layer                     | Status   |
 | ------------------------- | -------- |
@@ -433,7 +434,7 @@ SecureVaultPlatform/
 | ✅ Data Layer              | Complete |
 | ✅ Platform Services Layer | Complete |
 
-**VaultCore is now feature-complete as the platform foundation.**
+**VaultCore is feature-complete as the platform foundation.**
 
 ---
 
@@ -441,28 +442,17 @@ SecureVaultPlatform/
 
 ## Next Milestone
 
-Develop the first purpose-built native module:
+Enhance Password Vault with advanced capabilities:
 
-**Password Vault**
-
-Planned capabilities:
-
-* Secure password storage
-* Password generator
-* Password strength analysis
-* Categories
-* Clipboard auto-clear integration
-* Search integration
-* Notification integration
-* Recent Items integration
-* Storage Manager integration
-* Dialog Framework integration
-
----
+* Global Search Framework integration
+* Password import/export
+* Password history
+* Password aging alerts
+* Favorites management
+* Category filtering
 
 ## Future Modules
 
-* Password Vault
 * Secure Archive
 * Secure Notes
 
@@ -481,13 +471,15 @@ python app.py
 
 # Repository Status
 
-**Current Version:** **v0.5.0**
+**Current Version:** **v0.6.0**
 
 **Status:** Active Development
 
 **Architecture:** Four-Layer Modular Platform
 
-**Foundation:** Complete
+**VaultCore Foundation:** Complete
+
+**Native Modules:** 2
 
 **License:** MIT
 
@@ -499,7 +491,7 @@ python app.py
 
 > If a capability is unique to a specific application, it belongs in the **module**.
 
-This principle ensures the platform remains scalable, maintainable, and consistent as new secure applications are introduced.
+This principle keeps Secure Vault Platform scalable, maintainable, and consistent as additional secure desktop applications are introduced.
 
 ---
 
@@ -509,7 +501,7 @@ This principle ensures the platform remains scalable, maintainable, and consiste
 
 Engineering Student • Software Developer • Privacy-First Systems Enthusiast
 
-Secure Vault Platform is a long-term open-source project focused on building a modular ecosystem of secure, offline desktop applications. VaultCore provides reusable infrastructure for authentication, encryption, storage, lifecycle management, metadata, platform services, and module communication, allowing every module to concentrate solely on its business logic.
+Secure Vault Platform is a long-term open-source project focused on building a modular ecosystem of secure, offline desktop applications. VaultCore provides reusable infrastructure for authentication, encryption, storage, lifecycle management, metadata, platform services, and module communication, allowing each module to focus exclusively on its domain logic.
 
 **GitHub:** https://github.com/raghavendrashivam474
 
@@ -524,22 +516,30 @@ Secure Vault Platform is a long-term open-source project focused on building a m
 | **v0.3.0** | Application Layer — VaultModule Contract, Event Bus, Module Lifecycle                        |
 | **v0.4.0** | Data Layer — Storage Manager, Vault Filesystem, Metadata Service, Backup Manager             |
 | **v0.5.0** | Platform Services Layer — Clipboard, Dialogs, Notifications, Search, Commands, Import/Export |
+| **v0.6.0** | Password Vault — First Native VaultCore Module                                               |
 
 ---
 
 # Long-Term Vision
 
-Secure Vault Platform has completed its four foundational architectural layers:
+Secure Vault Platform now consists of four completed architectural layers:
 
-1. **Security Layer**
-2. **Application Layer**
-3. **Data Layer**
-4. **Platform Services Layer**
+1. Security Layer
+2. Application Layer
+3. Data Layer
+4. Platform Services Layer
 
-With VaultCore now serving as a mature desktop application framework, future development will focus on building domain-specific modules—beginning with **Password Vault**—that leverage the platform's shared capabilities instead of reimplementing common infrastructure.
+Built on this foundation are the platform's native modules:
+
+* ✅ Document Vault
+* ✅ Password Vault
+* 🚧 Secure Archive
+* 🚧 Secure Notes
+
+Password Vault demonstrates the intended development model for the ecosystem: **VaultCore owns reusable infrastructure, while modules own only their business logic.**
 
 Every future architectural decision should answer one question:
 
-> **Does this responsibility belong to VaultCore, or does it belong to the module?**
+> **Does this responsibility belong to VaultCore or does it belong to the module?**
 
-If it is reusable across multiple modules, it belongs in **VaultCore**. If it is unique to a single application, it belongs in the corresponding **module**.
+If it is reusable across multiple secure applications, it belongs in **VaultCore**. If it is unique to a single application, it belongs in the corresponding **module**.
