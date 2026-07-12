@@ -156,6 +156,19 @@ class PasswordVaultDashboard(tk.Frame):
             command=self._handle_import_csv
         ).pack(side="right", padx=(0, 6), pady=12)
 
+        tk.Button(
+            header,
+            text="📤  Export Vault",
+            font=Theme.FONT_BODY,
+            bg=Theme.ACCENT,
+            fg=Theme.TEXT,
+            relief="flat",
+            padx=14,
+            pady=6,
+            cursor="hand2",
+            command=self._handle_export_vault
+        ).pack(side="right", padx=(0, 6), pady=12)
+
     def _build_sidebar(self, parent: tk.Widget) -> None:
         sidebar = tk.Frame(parent, bg=Theme.PANEL, width=200)
         sidebar.pack(side="left", fill="y")
@@ -532,6 +545,61 @@ class PasswordVaultDashboard(tk.Frame):
             )
             self._load_data()
 
+    def _handle_export_vault(self) -> None:
+        """Export the entire Password Vault as an encrypted package."""
+        from tkinter import filedialog
+        from pathlib import Path
+        from modules.password_vault.core.vault_export import export_vault
+        from vaultcore.event_bus import platform_bus
+
+        # Confirm
+        if not self._dialogs.confirm(
+            "Export Password Vault",
+            f"Export all {len(self._passwords)} password(s) as an encrypted package?\n\n"
+            "The export is encrypted with your master password."
+        ):
+            return
+
+        # Choose destination
+        folder_str = filedialog.askdirectory(
+            title  = "Choose Export Destination",
+            parent = self
+        )
+        if not folder_str:
+            return
+
+        destination = Path(folder_str)
+
+        # Execute export
+        result = export_vault(destination, self._master_password)
+
+        if not result.success:
+            self._notifications.error(result.error)
+            self._dialogs.error("Export Failed", result.error)
+            return
+
+        # Publish event
+        platform_bus.publish("password.export_completed", {
+            "entries":  result.entry_count,
+            "history":  result.history_count,
+            "path":     result.file_path
+        })
+
+        # Log activity
+        self._activity_service.record(
+            "PasswordExport", "password_vault",
+            f"{result.entry_count} entries exported"
+        )
+
+        # Notify
+        self._notifications.success(f"Exported {result.entry_count} entries.")
+        self._dialogs.success(
+            "Export Complete",
+            f"Exported {result.entry_count} password(s) and "
+            f"{result.history_count} history record(s).\n\n"
+            f"Location:\n{result.file_path}"
+        )
+
     def _handle_import_csv(self) -> None:
         """Open CSV import workflow."""
         from pathlib import Path
@@ -742,6 +810,7 @@ class PasswordVaultDashboard(tk.Frame):
             "PasswordSaved", "password_vault"
         )
         self._load_data()
+
 
 
 
