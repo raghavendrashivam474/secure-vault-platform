@@ -17,6 +17,7 @@ from modules.password_vault.core.database import (
 from modules.password_vault.core.strength import analyze_password
 from modules.password_vault.ui.generator_dialog import GeneratorDialog
 from modules.password_vault.core.history import count_history_for_entry
+from vaultcore.event_bus import platform_bus
 
 
 STRENGTH_COLOURS = {
@@ -341,6 +342,8 @@ class PasswordEditor(tk.Toplevel):
         strength = analyze_password(password)
         notes    = self._notes_text.get("1.0", "end-1c").strip() or None
 
+        was_update = self._entry is not None
+
         if self._entry:
             # Detect password change
             old_password = decrypt_file_to_memory_string(
@@ -378,7 +381,25 @@ class PasswordEditor(tk.Toplevel):
                 notes              = notes,
                 strength_score     = strength.score
             )
-            insert_password(entry)
+            entry_id = insert_password(entry)
+
+            if entry_id is not None:
+                platform_bus.publish("password.created", {
+                    "entry_id": entry_id,
+                    "title":    title
+                })
+
+        if was_update and self._entry:
+            platform_bus.publish("password.updated", {
+                "entry_id":         self._entry.id,
+                "title":            title,
+                "password_changed": password_changed
+            })
+            if password_changed:
+                platform_bus.publish("password.changed", {
+                    "entry_id": self._entry.id,
+                    "title":    title
+                })
 
         self._on_saved()
         self.destroy()
@@ -439,5 +460,6 @@ def decrypt_file_to_memory_string(encrypted_b64: str, password: str) -> str:
         return pt.decode("utf-8")
     except Exception:
         return ""
+
 
 

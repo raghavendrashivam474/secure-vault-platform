@@ -31,14 +31,6 @@ from modules.password_vault.core.commands import (
     register_password_commands,
     PWV_CREATE, PWV_SEARCH, PWV_GENERATE, PWV_AUDIT,
     PWV_IMPORT, PWV_EXPORT, PWV_RESTORE,
-    PWV_SHOW_FAVORITES, PWV_SHOW_WEAK, PWV_SHOW_AGING,
-    FILTER_ALL as _FILTER_ALL_UNUSED
-) if False else None
-
-from modules.password_vault.core.commands import (
-    register_password_commands,
-    PWV_CREATE, PWV_SEARCH, PWV_GENERATE, PWV_AUDIT,
-    PWV_IMPORT, PWV_EXPORT, PWV_RESTORE,
     PWV_SHOW_FAVORITES, PWV_SHOW_WEAK, PWV_SHOW_AGING
 )
 from modules.password_vault.ui.password_editor import (
@@ -908,6 +900,10 @@ class PasswordVaultDashboard(tk.Frame):
             f"Delete '{entry.title}'?"
         ):
             delete_password(entry.id)
+            platform_bus.publish("password.deleted", {
+                "entry_id": entry.id,
+                "title":    entry.title
+            })
             self._notifications.success(f"Deleted: {entry.title}")
             self._notification_center.add(
                 "Password Deleted", f"{entry.title} removed.",
@@ -955,16 +951,23 @@ class PasswordVaultDashboard(tk.Frame):
             f"{entry.title} - auto-clears in 30 seconds.",
             "info", "password_vault"
         )
+        platform_bus.publish("password.copied", {
+            "entry_id": entry.id,
+            "title":    entry.title
+        })
         self._activity_service.record(
             "PasswordCopied", "password_vault", entry.title
         )
 
     def _on_saved(self) -> None:
+        platform_bus.publish("password.saved", {})
         self._notifications.success("Password saved.")
         self._activity_service.record(
             "PasswordSaved", "password_vault"
         )
         self._load_data()
+
+
 
 
 
