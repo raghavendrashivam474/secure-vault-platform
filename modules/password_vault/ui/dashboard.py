@@ -143,6 +143,19 @@ class PasswordVaultDashboard(tk.Frame):
             command=self._show_security_dashboard
         ).pack(side="right", padx=(0, 6), pady=12)
 
+        tk.Button(
+            header,
+            text="📥  Import CSV",
+            font=Theme.FONT_BODY,
+            bg=Theme.ACCENT,
+            fg=Theme.TEXT,
+            relief="flat",
+            padx=14,
+            pady=6,
+            cursor="hand2",
+            command=self._handle_import_csv
+        ).pack(side="right", padx=(0, 6), pady=12)
+
     def _build_sidebar(self, parent: tk.Widget) -> None:
         sidebar = tk.Frame(parent, bg=Theme.PANEL, width=200)
         sidebar.pack(side="left", fill="y")
@@ -519,6 +532,127 @@ class PasswordVaultDashboard(tk.Frame):
             )
             self._load_data()
 
+    def _handle_import_csv(self) -> None:
+        """Open CSV import workflow."""
+        from pathlib import Path
+        from tkinter import filedialog
+        from modules.password_vault.core.csv_import import (
+            parse_csv, detect_duplicates
+        )
+        from modules.password_vault.ui.import_dialog import ImportPreviewDialog
+
+        file_str = filedialog.askopenfilename(
+            title     = "Select Browser CSV Export",
+            filetypes = [("CSV Files", "*.csv"), ("All Files", "*.*")],
+            parent    = self
+        )
+
+        if not file_str:
+            return
+
+        file_path = Path(file_str)
+        rows, error = parse_csv(file_path)
+
+        if error:
+            self._notifications.error(f"CSV parse failed: {error}")
+            return
+
+        if not rows:
+            self._notifications.warning("CSV contains no data rows.")
+            return
+
+        # Detect duplicates
+        detect_duplicates(rows, self._passwords)
+
+        # Show preview
+        ImportPreviewDialog(
+            parent     = self,
+            rows       = rows,
+            on_confirm = self._execute_import
+        )
+
+    def _execute_import(self, rows, skip_duplicates: bool) -> None:
+        """Perform the actual import after user confirmation."""
+        from modules.password_vault.core.database import insert_password
+        from modules.password_vault.models.password_entry import PasswordEntry
+        from modules.password_vault.core.strength import analyze_password
+        from modules.password_vault.ui.password_editor import encrypt_string
+        from modules.password_vault.core.csv_import import ImportReport
+        from vaultcore.event_bus import platform_bus
+
+        report = ImportReport(rows_found=len(rows))
+
+        for row in rows:
+            if not row.is_valid:
+                report.invalid += 1
+                continue
+
+            if row.is_duplicate and skip_duplicates:
+                report.duplicates += 1
+                continue
+
+            try:
+                # Encrypt password
+                encrypted = encrypt_string(row.password, self._master_password)
+                if not encrypted:
+                    report.failed += 1
+                    continue
+
+                # Analyze strength
+                strength = analyze_password(row.password)
+
+                # Create entry
+                entry = PasswordEntry(
+                    id                 = None,
+                    title              = row.title,
+                    username           = row.username,
+                    password_encrypted = encrypted,
+                    url                = row.url,
+                    category_id        = None,
+                    notes              = row.notes,
+                    strength_score     = strength.score
+                )
+
+                if insert_password(entry) is not None:
+                    report.imported += 1
+                else:
+                    report.failed += 1
+
+            except Exception:
+                report.failed += 1
+
+        # Publish event
+        platform_bus.publish("password.import_completed", {
+            "imported":   report.imported,
+            "skipped":    report.skipped,
+            "duplicates": report.duplicates,
+            "invalid":    report.invalid
+        })
+
+        # Log activity
+        self._activity_service.record(
+            "PasswordImport", "password_vault",
+            f"{report.imported} imported"
+        )
+
+        # Show result
+        self._notifications.success(
+            f"Imported {report.imported} password(s). "
+            f"Skipped: {report.duplicates + report.invalid}"
+        )
+
+        # Show plaintext CSV warning
+        self._dialogs.warning(
+            "Security Reminder",
+            "The imported CSV file contains plaintext passwords.\n\n"
+            "Consider securely deleting the CSV file after successful import.\n\n"
+            "How to delete depends on your operating system and storage type. "
+            "Secure deletion cannot be guaranteed on SSDs or cloud storage."
+        )
+
+        # Refresh
+        self._load_data()
+
     def _show_security_dashboard(self) -> None:
         """Open the vault security dashboard."""
         from modules.password_vault.ui.security_dashboard import SecurityDashboard
@@ -608,5 +742,6 @@ class PasswordVaultDashboard(tk.Frame):
             "PasswordSaved", "password_vault"
         )
         self._load_data()
+
 
 
