@@ -124,18 +124,11 @@ def sort_entries(
 
 def _password_age_days(entry: PasswordEntry) -> int:
     """
-    Calculate password age in days.
+    Calculate password age in days using the aging engine.
 
-    Uses modified_at as a proxy for last password change.
-    Sprint 13.4 will improve this via password history.
+    Uses password_changed_at from Sprint 13.4 for accurate age.
     """
-    if not entry.modified_at:
-        return 0
-    try:
-        modified = datetime.fromisoformat(entry.modified_at)
-        if modified.tzinfo is None:
-            modified = modified.replace(tzinfo=timezone.utc)
-        delta = datetime.now(timezone.utc) - modified
-        return delta.days
-    except Exception:
-        return 0
+    from modules.password_vault.core.aging_engine import get_password_age_days
+    days = get_password_age_days(entry)
+    return days if days is not None else 0
+

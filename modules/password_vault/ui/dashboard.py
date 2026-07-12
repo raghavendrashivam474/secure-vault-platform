@@ -23,6 +23,10 @@ from modules.password_vault.core.filter_engine import (
     FILTER_RECENTLY_USED, FILTER_UNCATEGORIZED,
     SORT_TITLE, SORT_MODIFIED, SORT_ACCESSED, SORT_STRENGTH
 )
+from modules.password_vault.core.aging_engine import (
+    analyze_entry, get_aging_color,
+    AGE_STATUS_FRESH, AGE_STATUS_AGING, AGE_STATUS_OLD, AGE_STATUS_CRITICAL
+)
 from modules.password_vault.ui.password_editor import (
     PasswordEditor, decrypt_file_to_memory_string
 )
@@ -435,6 +439,19 @@ class PasswordVaultDashboard(tk.Frame):
             fg=colour
         ).pack(side="left")
 
+        # Age badge
+        aging = analyze_entry(entry)
+        if aging.status in (AGE_STATUS_AGING, AGE_STATUS_OLD, AGE_STATUS_CRITICAL):
+            age_color = get_aging_color(aging.status)
+            age_text  = f"  🕒 {aging.label} ({aging.age_days}d)"
+            tk.Label(
+                title_row,
+                text=age_text,
+                font=Theme.FONT_SMALL,
+                bg=Theme.PANEL,
+                fg=age_color
+            ).pack(side="left")
+
         tk.Label(
             left,
             text=f"👤  {entry.username}",
@@ -568,3 +585,4 @@ class PasswordVaultDashboard(tk.Frame):
             "PasswordSaved", "password_vault"
         )
         self._load_data()
+
