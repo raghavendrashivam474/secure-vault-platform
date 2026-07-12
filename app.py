@@ -194,7 +194,8 @@ class SecureVaultPlatform:
             activity_service    = self._activity_service,
             recent_items        = self._recent_items,
             storage_manager     = self._storage_manager,
-            search_framework    = self._search_framework
+            search_framework    = self._search_framework,
+            command_registry    = self._command_registry
         )
 
         self._module_manager.register(ModuleDefinition(
@@ -408,6 +409,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
 
 

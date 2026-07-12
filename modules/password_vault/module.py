@@ -40,6 +40,7 @@ class PasswordVaultModule(VaultModule):
         self._storage_manager     = None
         self._parent_root         = None
         self._search_framework    = None
+        self._command_registry    = None
 
     @property
     def module_id(self) -> str:
@@ -71,11 +72,13 @@ class PasswordVaultModule(VaultModule):
         activity_service,
         recent_items,
         storage_manager,
-        search_framework=None
+        search_framework=None,
+        command_registry=None
     ) -> None:
         """Inject platform services from VaultCore."""
         self._parent_root         = parent_root
         self._search_framework    = search_framework
+        self._command_registry    = command_registry
         self._clipboard           = clipboard
         self._dialogs             = dialogs
         self._notifications       = notifications
@@ -222,4 +225,5 @@ class PasswordVaultModule(VaultModule):
             return "healthy"
         except Exception:
             return "unknown"
+
 

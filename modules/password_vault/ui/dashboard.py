@@ -27,6 +27,20 @@ from modules.password_vault.core.aging_engine import (
     analyze_entry, get_aging_color,
     AGE_STATUS_FRESH, AGE_STATUS_AGING, AGE_STATUS_OLD, AGE_STATUS_CRITICAL
 )
+from modules.password_vault.core.commands import (
+    register_password_commands,
+    PWV_CREATE, PWV_SEARCH, PWV_GENERATE, PWV_AUDIT,
+    PWV_IMPORT, PWV_EXPORT, PWV_RESTORE,
+    PWV_SHOW_FAVORITES, PWV_SHOW_WEAK, PWV_SHOW_AGING,
+    FILTER_ALL as _FILTER_ALL_UNUSED
+) if False else None
+
+from modules.password_vault.core.commands import (
+    register_password_commands,
+    PWV_CREATE, PWV_SEARCH, PWV_GENERATE, PWV_AUDIT,
+    PWV_IMPORT, PWV_EXPORT, PWV_RESTORE,
+    PWV_SHOW_FAVORITES, PWV_SHOW_WEAK, PWV_SHOW_AGING
+)
 from modules.password_vault.ui.password_editor import (
     PasswordEditor, decrypt_file_to_memory_string
 )
@@ -85,6 +99,43 @@ class PasswordVaultDashboard(tk.Frame):
 
         self._build()
         self._load_data()
+        self._register_commands()
+
+    def _register_commands(self) -> None:
+        """Register Password Vault commands with the platform Command Registry."""
+        try:
+            # Get command registry from parent chain
+            root = self.master
+            while root and not hasattr(root, "_command_registry"):
+                root = root.master
+            if root is None or root._command_registry is None:
+                return
+
+            handlers = {
+                PWV_CREATE:         self._handle_add,
+                PWV_GENERATE:       self._cmd_open_generator,
+                PWV_AUDIT:          self._show_security_dashboard,
+                PWV_IMPORT:         self._handle_import_csv,
+                PWV_EXPORT:         self._handle_export_vault,
+                PWV_RESTORE:        self._handle_restore_vault,
+                PWV_SHOW_FAVORITES: lambda: self._set_filter("favorites"),
+                PWV_SHOW_WEAK:      lambda: self._set_filter("weak"),
+                PWV_SHOW_AGING:     lambda: self._set_filter("aging"),
+            }
+            register_password_commands(root._command_registry, handlers)
+        except Exception as error:
+            print(f"[PasswordVault] Command registration failed: {error}")
+
+    def _cmd_open_generator(self) -> None:
+        """Command handler: open standalone generator."""
+        from modules.password_vault.ui.generator_dialog import GeneratorDialog
+        GeneratorDialog(
+            parent    = self,
+            on_accept = lambda pwd: self._clipboard.copy_text(
+                pwd, "password_vault", auto_clear_seconds=30
+            )
+        )
+        self._notifications.info("Generated password copied. Clears in 30s.")
 
     def _build(self) -> None:
         self.pack(fill="both", expand=True)
@@ -914,6 +965,7 @@ class PasswordVaultDashboard(tk.Frame):
             "PasswordSaved", "password_vault"
         )
         self._load_data()
+
 
 
 
