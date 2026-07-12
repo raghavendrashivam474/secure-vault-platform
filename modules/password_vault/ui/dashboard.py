@@ -128,7 +128,20 @@ class PasswordVaultDashboard(tk.Frame):
             pady=6,
             cursor="hand2",
             command=self._handle_add
-        ).pack(side="right", padx=16, pady=12)
+        ).pack(side="right", padx=(0, 16), pady=12)
+
+        tk.Button(
+            header,
+            text="🛡  Security",
+            font=Theme.FONT_BODY,
+            bg=Theme.ACCENT,
+            fg=Theme.TEXT,
+            relief="flat",
+            padx=14,
+            pady=6,
+            cursor="hand2",
+            command=self._show_security_dashboard
+        ).pack(side="right", padx=(0, 6), pady=12)
 
     def _build_sidebar(self, parent: tk.Widget) -> None:
         sidebar = tk.Frame(parent, bg=Theme.PANEL, width=200)
@@ -506,6 +519,16 @@ class PasswordVaultDashboard(tk.Frame):
             )
             self._load_data()
 
+    def _show_security_dashboard(self) -> None:
+        """Open the vault security dashboard."""
+        from modules.password_vault.ui.security_dashboard import SecurityDashboard
+        SecurityDashboard(
+            parent           = self,
+            master_password  = self._master_password,
+            notifications    = self._notifications,
+            activity_service = self._activity_service
+        )
+
     def _handle_add(self) -> None:
         PasswordEditor(
             parent          = self,
@@ -585,4 +608,5 @@ class PasswordVaultDashboard(tk.Frame):
             "PasswordSaved", "password_vault"
         )
         self._load_data()
+
 
