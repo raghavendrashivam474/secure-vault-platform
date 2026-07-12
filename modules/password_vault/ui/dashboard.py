@@ -1,7 +1,7 @@
 ﻿"""
 modules/password_vault/ui/dashboard.py
 
-Password Vault dashboard - main UI.
+Password Vault dashboard - main UI with filters and sorting.
 """
 
 import tkinter as tk
@@ -11,9 +11,17 @@ from vaultcore.theme import Theme
 from vaultcore.event_bus import platform_bus, Events
 
 from modules.password_vault.models.password_entry import PasswordEntry
+from modules.password_vault.models.password_category import PasswordCategory
 from modules.password_vault.core.database import (
     load_all_passwords, delete_password,
-    update_last_accessed, get_password_statistics, toggle_favorite
+    update_last_accessed, get_password_statistics, toggle_favorite,
+    load_all_categories
+)
+from modules.password_vault.core.filter_engine import (
+    filter_entries, sort_entries,
+    FILTER_ALL, FILTER_FAVORITES, FILTER_WEAK, FILTER_AGING, FILTER_OLD,
+    FILTER_RECENTLY_USED, FILTER_UNCATEGORIZED,
+    SORT_TITLE, SORT_MODIFIED, SORT_ACCESSED, SORT_STRENGTH
 )
 from modules.password_vault.ui.password_editor import (
     PasswordEditor, decrypt_file_to_memory_string
@@ -28,17 +36,18 @@ STRENGTH_COLOURS = {
 }
 
 
-class PasswordVaultDashboard(tk.Frame):
-    """
-    Main Password Vault dashboard.
+SORT_OPTIONS = [
+    ("Title A-Z",           SORT_TITLE,    True),
+    ("Title Z-A",           SORT_TITLE,    False),
+    ("Recently Modified",   SORT_MODIFIED, False),
+    ("Recently Accessed",   SORT_ACCESSED, False),
+    ("Weakest First",       SORT_STRENGTH, True),
+    ("Strongest First",     SORT_STRENGTH, False),
+]
 
-    Uses all VaultCore platform services:
-      - Clipboard Manager
-      - Dialog Framework
-      - Notification Center
-      - Activity Service
-      - Recent Items
-    """
+
+class PasswordVaultDashboard(tk.Frame):
+    """Main Password Vault dashboard with filter sidebar."""
 
     def __init__(
         self,
@@ -62,20 +71,26 @@ class PasswordVaultDashboard(tk.Frame):
         self._recent_items        = recent_items
         self._on_close            = on_close
 
-        self._passwords: list[PasswordEntry] = []
-        self._selected_entry: Optional[PasswordEntry] = None
-        self._search_query: str = ""
+        self._passwords:      list[PasswordEntry]    = []
+        self._categories:     list[PasswordCategory] = []
+        self._active_filter:  str = FILTER_ALL
+        self._active_category: Optional[int] = None
+        self._search_query:   str = ""
+        self._sort_by:        str = SORT_TITLE
+        self._sort_asc:       bool = True
 
         self._build()
         self._load_data()
 
     def _build(self) -> None:
-        """Construct the dashboard layout."""
         self.pack(fill="both", expand=True)
         self._build_header()
-        self._build_toolbar()
-        self._build_stats()
-        self._build_list()
+
+        body = tk.Frame(self, bg=Theme.BACKGROUND)
+        body.pack(fill="both", expand=True)
+
+        self._build_sidebar(body)
+        self._build_main(body)
 
     def _build_header(self) -> None:
         header = tk.Frame(self, bg=Theme.PANEL, height=60)
@@ -111,8 +126,69 @@ class PasswordVaultDashboard(tk.Frame):
             command=self._handle_add
         ).pack(side="right", padx=16, pady=12)
 
-    def _build_toolbar(self) -> None:
-        toolbar = tk.Frame(self, bg=Theme.TOOLBAR if hasattr(Theme, 'TOOLBAR') else Theme.PANEL, height=44)
+    def _build_sidebar(self, parent: tk.Widget) -> None:
+        sidebar = tk.Frame(parent, bg=Theme.PANEL, width=200)
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)
+
+        tk.Label(
+            sidebar,
+            text="FILTERS",
+            font=Theme.FONT_LABEL,
+            bg=Theme.PANEL,
+            fg=Theme.SUBTLE
+        ).pack(anchor="w", padx=16, pady=(16, 6))
+
+        self._filter_buttons = {}
+
+        filters = [
+            ("📋  All Passwords",     FILTER_ALL),
+            ("⭐  Favorites",         FILTER_FAVORITES),
+            ("⚠  Weak",               FILTER_WEAK),
+            ("🕒  Aging (90+ days)",  FILTER_AGING),
+            ("⏰  Old (180+ days)",   FILTER_OLD),
+            ("👁  Recently Used",     FILTER_RECENTLY_USED),
+            ("📂  Uncategorized",     FILTER_UNCATEGORIZED),
+        ]
+
+        for label, filter_id in filters:
+            btn = tk.Button(
+                sidebar,
+                text=label,
+                font=Theme.FONT_BODY,
+                bg=Theme.PANEL,
+                fg=Theme.TEXT,
+                activebackground=Theme.ACCENT,
+                relief="flat",
+                anchor="w",
+                padx=16,
+                pady=6,
+                cursor="hand2",
+                command=lambda f=filter_id: self._set_filter(f)
+            )
+            btn.pack(fill="x", padx=4)
+            self._filter_buttons[filter_id] = btn
+
+        # Categories section
+        tk.Label(
+            sidebar,
+            text="CATEGORIES",
+            font=Theme.FONT_LABEL,
+            bg=Theme.PANEL,
+            fg=Theme.SUBTLE
+        ).pack(anchor="w", padx=16, pady=(20, 6))
+
+        self._categories_frame = tk.Frame(sidebar, bg=Theme.PANEL)
+        self._categories_frame.pack(fill="x")
+
+        self._highlight_filter()
+
+    def _build_main(self, parent: tk.Widget) -> None:
+        main = tk.Frame(parent, bg=Theme.BACKGROUND)
+        main.pack(side="left", fill="both", expand=True)
+
+        # Toolbar
+        toolbar = tk.Frame(main, bg=Theme.PANEL, height=44)
         toolbar.pack(fill="x")
         toolbar.pack_propagate(False)
 
@@ -136,13 +212,87 @@ class PasswordVaultDashboard(tk.Frame):
             insertbackground=Theme.TEXT,
             relief="flat",
             bd=6,
-            width=40
+            width=30
         ).pack(side="left", ipady=3, pady=6)
 
-    def _build_stats(self) -> None:
-        self._stats_frame = tk.Frame(self, bg=Theme.BACKGROUND, height=70)
+        tk.Label(
+            toolbar,
+            text="  Sort:",
+            font=Theme.FONT_SMALL,
+            bg=Theme.PANEL,
+            fg=Theme.SUBTLE
+        ).pack(side="left", padx=(12, 4))
+
+        self._sort_var = tk.StringVar(value="Title A-Z")
+        sort_menu = tk.OptionMenu(
+            toolbar,
+            self._sort_var,
+            *[label for label, _, _ in SORT_OPTIONS],
+            command=self._on_sort_change
+        )
+        sort_menu.config(
+            bg=Theme.ACCENT,
+            fg=Theme.TEXT,
+            activebackground=Theme.HIGHLIGHT,
+            relief="flat",
+            highlightthickness=0
+        )
+        sort_menu["menu"].config(bg=Theme.ACCENT, fg=Theme.TEXT)
+        sort_menu.pack(side="left", pady=6)
+
+        # Stats
+        self._stats_frame = tk.Frame(main, bg=Theme.BACKGROUND)
         self._stats_frame.pack(fill="x", padx=16, pady=8)
+
+        # List area
+        list_container = tk.Frame(main, bg=Theme.BACKGROUND)
+        list_container.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+
+        canvas = tk.Canvas(list_container, bg=Theme.BACKGROUND, highlightthickness=0)
+        sb = tk.Scrollbar(list_container, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        canvas.pack(fill="both", expand=True)
+
+        self._list_inner = tk.Frame(canvas, bg=Theme.BACKGROUND)
+        win = canvas.create_window((0, 0), window=self._list_inner, anchor="nw")
+        self._list_inner.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.bind(
+            "<Configure>",
+            lambda e: canvas.itemconfig(win, width=e.width)
+        )
+
+    def _load_data(self) -> None:
+        self._passwords  = load_all_passwords()
+        self._categories = load_all_categories()
+        self._render_categories()
         self._render_stats()
+        self._render_list()
+
+    def _render_categories(self) -> None:
+        for widget in self._categories_frame.winfo_children():
+            widget.destroy()
+
+        for cat in self._categories:
+            count = f"  ({cat.entry_count})" if cat.entry_count > 0 else ""
+            btn = tk.Button(
+                self._categories_frame,
+                text=f"{cat.icon}  {cat.name}{count}",
+                font=Theme.FONT_BODY,
+                bg=Theme.PANEL,
+                fg=Theme.TEXT,
+                activebackground=Theme.ACCENT,
+                relief="flat",
+                anchor="w",
+                padx=16,
+                pady=5,
+                cursor="hand2",
+                command=lambda c=cat: self._set_category_filter(c.id)
+            )
+            btn.pack(fill="x", padx=4)
 
     def _render_stats(self) -> None:
         for widget in self._stats_frame.winfo_children():
@@ -177,47 +327,48 @@ class PasswordVaultDashboard(tk.Frame):
                 fg=Theme.SUBTLE
             ).pack()
 
-    def _build_list(self) -> None:
-        list_container = tk.Frame(self, bg=Theme.BACKGROUND)
-        list_container.pack(fill="both", expand=True, padx=16, pady=(0, 16))
-
-        canvas = tk.Canvas(list_container, bg=Theme.BACKGROUND, highlightthickness=0)
-        sb = tk.Scrollbar(list_container, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        canvas.pack(fill="both", expand=True)
-
-        self._list_inner = tk.Frame(canvas, bg=Theme.BACKGROUND)
-        win = canvas.create_window((0, 0), window=self._list_inner, anchor="nw")
-        self._list_inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.bind("<Configure>", lambda e: canvas.itemconfig(win, width=e.width))
-
-    def _load_data(self) -> None:
-        self._passwords = load_all_passwords()
-        self._render_list()
-        self._render_stats()
-
     def _on_search(self) -> None:
-        self._search_query = self._search_var.get().lower().strip()
+        self._search_query = self._search_var.get()
         self._render_list()
 
-    def _get_filtered(self) -> list[PasswordEntry]:
-        if not self._search_query:
-            return self._passwords
-        q = self._search_query
-        return [
-            p for p in self._passwords
-            if q in p.title.lower()
-            or q in p.username.lower()
-            or q in (p.url or "").lower()
-            or q in (p.notes or "").lower()
-        ]
+    def _on_sort_change(self, selected_label: str) -> None:
+        for label, sort_by, ascending in SORT_OPTIONS:
+            if label == selected_label:
+                self._sort_by  = sort_by
+                self._sort_asc = ascending
+                break
+        self._render_list()
+
+    def _set_filter(self, filter_type: str) -> None:
+        self._active_filter   = filter_type
+        self._active_category = None
+        self._highlight_filter()
+        self._render_list()
+
+    def _set_category_filter(self, category_id: int) -> None:
+        self._active_filter   = FILTER_ALL
+        self._active_category = category_id
+        self._highlight_filter()
+        self._render_list()
+
+    def _highlight_filter(self) -> None:
+        for filter_id, btn in self._filter_buttons.items():
+            if filter_id == self._active_filter and self._active_category is None:
+                btn.config(bg=Theme.ACCENT)
+            else:
+                btn.config(bg=Theme.PANEL)
 
     def _render_list(self) -> None:
         for widget in self._list_inner.winfo_children():
             widget.destroy()
 
-        entries = self._get_filtered()
+        filtered = filter_entries(
+            self._passwords,
+            filter_type   = self._active_filter,
+            category_id   = self._active_category,
+            search_query  = self._search_query
+        )
+        entries = sort_entries(filtered, self._sort_by, self._sort_asc)
 
         if not entries:
             self._render_empty()
@@ -235,40 +386,41 @@ class PasswordVaultDashboard(tk.Frame):
             fg=Theme.SUBTLE
         ).pack(pady=(60, 8))
 
-        msg = "No passwords match your search." if self._search_query else "No passwords yet."
-        sub = "Try a different query." if self._search_query else "Click ＋ Add Password to create your first entry."
-
         tk.Label(
             self._list_inner,
-            text=msg,
+            text="No passwords match this filter.",
             font=Theme.FONT_SUBHEADING,
             bg=Theme.BACKGROUND,
             fg=Theme.TEXT
         ).pack()
 
-        tk.Label(
-            self._list_inner,
-            text=sub,
-            font=Theme.FONT_BODY,
-            bg=Theme.BACKGROUND,
-            fg=Theme.SUBTLE
-        ).pack(pady=(4, 0))
-
     def _render_entry_row(self, entry: PasswordEntry) -> None:
         row = tk.Frame(self._list_inner, bg=Theme.PANEL, padx=16, pady=12)
         row.pack(fill="x", padx=4, pady=3)
 
-        # Left: title + username
         left = tk.Frame(row, bg=Theme.PANEL)
         left.pack(side="left", fill="x", expand=True)
 
         title_row = tk.Frame(left, bg=Theme.PANEL)
         title_row.pack(fill="x", anchor="w")
 
-        star = "⭐  " if entry.is_favorite else ""
+        # Favorite star button (clickable)
+        star_text = "⭐" if entry.is_favorite else "☆"
+        star_color = Theme.HIGHLIGHT if entry.is_favorite else Theme.SUBTLE
+        tk.Button(
+            title_row,
+            text=star_text,
+            font=("Segoe UI", 12),
+            bg=Theme.PANEL,
+            fg=star_color,
+            relief="flat",
+            cursor="hand2",
+            command=lambda e=entry: self._toggle_favorite(e)
+        ).pack(side="left", padx=(0, 4))
+
         tk.Label(
             title_row,
-            text=f"{star}{entry.title}",
+            text=entry.title,
             font=Theme.FONT_SUBHEADING,
             bg=Theme.PANEL,
             fg=Theme.TEXT
@@ -300,7 +452,6 @@ class PasswordVaultDashboard(tk.Frame):
                 fg=Theme.SUBTLE
             ).pack(anchor="w")
 
-        # Right: action buttons
         actions = tk.Frame(row, bg=Theme.PANEL)
         actions.pack(side="right")
 
@@ -323,7 +474,20 @@ class PasswordVaultDashboard(tk.Frame):
                 command=cmd
             ).pack(side="left", padx=2)
 
-    # ── Actions ────────────────────────────────────────────────────────────────
+    def _toggle_favorite(self, entry: PasswordEntry) -> None:
+        new_state = not entry.is_favorite
+        if toggle_favorite(entry.id, new_state):
+            entry.is_favorite = new_state
+            platform_bus.publish("password.favorite_changed", {
+                "entry_id":    entry.id,
+                "is_favorite": new_state
+            })
+            self._activity_service.record(
+                "PasswordFavorited" if new_state else "PasswordUnfavorited",
+                "password_vault",
+                entry.title
+            )
+            self._load_data()
 
     def _handle_add(self) -> None:
         PasswordEditor(
@@ -363,7 +527,7 @@ class PasswordVaultDashboard(tk.Frame):
             module_id="password_vault",
             auto_clear_seconds=30
         )
-        self._notifications.success(f"Username copied. Clears in 30s.")
+        self._notifications.success("Username copied. Clears in 30s.")
         self._activity_service.record(
             "UsernameCopied", "password_vault", entry.title
         )
@@ -388,7 +552,7 @@ class PasswordVaultDashboard(tk.Frame):
             name=entry.title,
             item_type="password"
         )
-        self._notifications.success(f"Password copied. Clears in 30s.")
+        self._notifications.success("Password copied. Clears in 30s.")
         self._notification_center.add(
             "Password Copied",
             f"{entry.title} - auto-clears in 30 seconds.",
