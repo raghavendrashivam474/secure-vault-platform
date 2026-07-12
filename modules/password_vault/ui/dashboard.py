@@ -169,6 +169,19 @@ class PasswordVaultDashboard(tk.Frame):
             command=self._handle_export_vault
         ).pack(side="right", padx=(0, 6), pady=12)
 
+        tk.Button(
+            header,
+            text="🔄  Restore",
+            font=Theme.FONT_BODY,
+            bg=Theme.ACCENT,
+            fg=Theme.TEXT,
+            relief="flat",
+            padx=14,
+            pady=6,
+            cursor="hand2",
+            command=self._handle_restore_vault
+        ).pack(side="right", padx=(0, 6), pady=12)
+
     def _build_sidebar(self, parent: tk.Widget) -> None:
         sidebar = tk.Frame(parent, bg=Theme.PANEL, width=200)
         sidebar.pack(side="left", fill="y")
@@ -545,6 +558,97 @@ class PasswordVaultDashboard(tk.Frame):
             )
             self._load_data()
 
+    def _handle_restore_vault(self) -> None:
+        """Restore from an encrypted .pvexport package."""
+        from tkinter import filedialog, simpledialog
+        from pathlib import Path
+        from modules.password_vault.core.vault_import import (
+            read_package_preview, restore_package
+        )
+        from modules.password_vault.ui.recovery_dialog import RecoveryPreviewDialog
+
+        # Select file
+        file_str = filedialog.askopenfilename(
+            title     = "Select Password Vault Export",
+            filetypes = [
+                ("Password Vault Export", "*.pvexport"),
+                ("All Files", "*.*")
+            ],
+            parent = self
+        )
+        if not file_str:
+            return
+
+        file_path = Path(file_str)
+
+        # Prompt for package password
+        package_password = simpledialog.askstring(
+            "Package Password",
+            "Enter the master password used when this package was created:",
+            show="●",
+            parent=self
+        )
+        if not package_password:
+            return
+
+        # Read and validate package
+        success, error, preview = read_package_preview(file_path, package_password)
+
+        if not success:
+            self._notifications.error(error)
+            self._dialogs.error("Recovery Failed", error)
+            return
+
+        # Show preview dialog
+        def on_confirm(skip_duplicates: bool) -> None:
+            self._execute_restore(preview, skip_duplicates)
+
+        RecoveryPreviewDialog(
+            parent     = self,
+            preview    = preview,
+            on_confirm = on_confirm
+        )
+
+    def _execute_restore(self, preview, skip_duplicates: bool) -> None:
+        """Execute the restore after user confirms."""
+        from modules.password_vault.core.vault_import import restore_package
+        from vaultcore.event_bus import platform_bus
+
+        result = restore_package(preview, skip_duplicates=skip_duplicates)
+
+        if not result.success:
+            self._notifications.error(result.error)
+            self._dialogs.error("Restore Failed", result.error)
+            return
+
+        # Publish event
+        platform_bus.publish("password.recovery_completed", {
+            "imported":   result.imported,
+            "duplicates": result.duplicates,
+            "history":    result.history_added
+        })
+
+        # Log
+        self._activity_service.record(
+            "PasswordRecovery", "password_vault",
+            f"{result.imported} restored"
+        )
+
+        # Notify
+        self._notifications.success(f"Restored {result.imported} entries.")
+
+        # Detail dialog
+        self._dialogs.success(
+            "Recovery Complete",
+            f"Imported:      {result.imported}\n"
+            f"Duplicates:    {result.duplicates}\n"
+            f"History:       {result.history_added}\n"
+            f"Failed:        {result.failed}"
+        )
+
+        # Refresh
+        self._load_data()
+
     def _handle_export_vault(self) -> None:
         """Export the entire Password Vault as an encrypted package."""
         from tkinter import filedialog
@@ -810,6 +914,7 @@ class PasswordVaultDashboard(tk.Frame):
             "PasswordSaved", "password_vault"
         )
         self._load_data()
+
 
 
 
