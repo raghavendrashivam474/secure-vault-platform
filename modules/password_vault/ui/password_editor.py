@@ -16,6 +16,7 @@ from modules.password_vault.core.database import (
 )
 from modules.password_vault.core.strength import analyze_password
 from modules.password_vault.ui.generator_dialog import GeneratorDialog
+from modules.password_vault.core.history import count_history_for_entry
 
 
 STRENGTH_COLOURS = {
@@ -67,6 +68,22 @@ class PasswordEditor(tk.Toplevel):
         # Buttons (fixed at bottom) - build FIRST so they always show
         button_frame = tk.Frame(self, bg=Theme.BACKGROUND)
         button_frame.pack(side="bottom", fill="x", padx=24, pady=(10, 20))
+
+        if self._entry:
+            history_count = count_history_for_entry(self._entry.id)
+            history_label = f"🕒  History ({history_count})" if history_count > 0 else "🕒  History"
+            tk.Button(
+                button_frame,
+                text=history_label,
+                font=Theme.FONT_BODY,
+                bg=Theme.ACCENT,
+                fg=Theme.TEXT,
+                relief="flat",
+                padx=12,
+                pady=8,
+                cursor="hand2",
+                command=self._show_history
+            ).pack(side="left")
 
         tk.Button(
             button_frame,
@@ -325,6 +342,23 @@ class PasswordEditor(tk.Toplevel):
         notes    = self._notes_text.get("1.0", "end-1c").strip() or None
 
         if self._entry:
+            # Detect password change
+            old_password = decrypt_file_to_memory_string(
+                self._entry.password_encrypted, self._master_password
+            )
+            new_password = password
+            password_changed = (old_password != new_password)
+
+            # Save history record if password changed
+            if password_changed:
+                from modules.password_vault.core.history import add_history_record
+                add_history_record(
+                    entry_id           = self._entry.id,
+                    password_encrypted = self._entry.password_encrypted,
+                    strength_score     = self._entry.strength_score,
+                    reason             = "user_edit"
+                )
+
             self._entry.title              = title
             self._entry.username           = username
             self._entry.password_encrypted = encrypted
@@ -332,7 +366,7 @@ class PasswordEditor(tk.Toplevel):
             self._entry.category_id        = category_id
             self._entry.notes              = notes
             self._entry.strength_score     = strength.score
-            update_password(self._entry)
+            update_password(self._entry, password_changed=password_changed)
         else:
             entry = PasswordEntry(
                 id                 = None,
@@ -348,6 +382,31 @@ class PasswordEditor(tk.Toplevel):
 
         self._on_saved()
         self.destroy()
+
+
+    def _show_history(self) -> None:
+        """Open password history panel."""
+        from modules.password_vault.ui.history_panel import HistoryPanel
+        # Need dialogs, notifications, activity_service from somewhere
+        # Get them from the parent dashboard
+        try:
+            dashboard = self.master
+            while dashboard and not hasattr(dashboard, "_dialogs"):
+                dashboard = dashboard.master
+            if dashboard is None:
+                return
+
+            HistoryPanel(
+                parent           = self,
+                entry            = self._entry,
+                master_password  = self._master_password,
+                dialogs          = dashboard._dialogs,
+                notifications    = dashboard._notifications,
+                activity_service = dashboard._activity_service,
+                on_restored      = self._on_saved
+            )
+        except Exception as error:
+            print(f"[PasswordEditor] Failed to show history: {error}")
 
 
 def encrypt_string(text: str, password: str) -> str:
@@ -380,3 +439,5 @@ def decrypt_file_to_memory_string(encrypted_b64: str, password: str) -> str:
         return pt.decode("utf-8")
     except Exception:
         return ""
+
+

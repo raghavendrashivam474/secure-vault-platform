@@ -1,8 +1,7 @@
 ﻿"""
 modules/password_vault/core/database.py
 
-Password Vault database operations.
-Uses shared VaultCore database connection.
+Password Vault database operations with history tracking.
 """
 
 import sqlite3
@@ -28,7 +27,6 @@ DEFAULT_CATEGORIES = [
 
 
 def _connect() -> sqlite3.Connection:
-    """Open a database connection."""
     connection = sqlite3.connect(DATABASE_PATH)
     connection.row_factory = sqlite3.Row
     return connection
@@ -53,7 +51,8 @@ def initialize_password_database() -> None:
                 strength_score     INTEGER NOT NULL DEFAULT 0,
                 created_at         TEXT    NOT NULL,
                 modified_at        TEXT    NOT NULL,
-                last_accessed      TEXT
+                last_accessed      TEXT,
+                password_changed_at TEXT
             )
         """)
 
@@ -67,6 +66,23 @@ def initialize_password_database() -> None:
         """)
 
         connection.commit()
+
+        # Migration: add password_changed_at if missing
+        cursor.execute("PRAGMA table_info(password_entries)")
+        cols = {row["name"] for row in cursor.fetchall()}
+        if "password_changed_at" not in cols:
+            try:
+                cursor.execute(
+                    "ALTER TABLE password_entries ADD COLUMN password_changed_at TEXT"
+                )
+                connection.commit()
+            except Exception:
+                pass
+
+        # Initialize history table
+        from modules.password_vault.core.history import initialize_history_table
+        initialize_history_table()
+
         _seed_default_categories(cursor, connection)
 
     finally:
@@ -74,7 +90,6 @@ def initialize_password_database() -> None:
 
 
 def _seed_default_categories(cursor, connection) -> None:
-    """Insert default categories if missing."""
     now = datetime.now(timezone.utc).isoformat()
     for name, icon in DEFAULT_CATEGORIES:
         cursor.execute(
@@ -89,8 +104,6 @@ def _seed_default_categories(cursor, connection) -> None:
     connection.commit()
 
 
-# ── Password entry operations ─────────────────────────────────────────────────
-
 def insert_password(entry: PasswordEntry) -> Optional[int]:
     """Insert a new password entry."""
     connection = _connect()
@@ -102,14 +115,14 @@ def insert_password(entry: PasswordEntry) -> Optional[int]:
             INSERT INTO password_entries (
                 title, username, password_encrypted, url,
                 category_id, notes, is_favorite, strength_score,
-                created_at, modified_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                created_at, modified_at, password_changed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 entry.title, entry.username, entry.password_encrypted,
                 entry.url, entry.category_id, entry.notes,
                 1 if entry.is_favorite else 0, entry.strength_score,
-                now, now
+                now, now, now
             )
         )
         connection.commit()
@@ -121,27 +134,54 @@ def insert_password(entry: PasswordEntry) -> Optional[int]:
         connection.close()
 
 
-def update_password(entry: PasswordEntry) -> bool:
-    """Update an existing password entry."""
+def update_password(entry: PasswordEntry, password_changed: bool = False) -> bool:
+    """
+    Update an existing password entry.
+
+    Args:
+        entry:            The updated entry.
+        password_changed: If True, reset password_changed_at timestamp.
+
+    Returns:
+        True if update succeeded.
+    """
     connection = _connect()
     try:
         cursor = connection.cursor()
         now = datetime.now(timezone.utc).isoformat()
-        cursor.execute(
-            """
-            UPDATE password_entries
-            SET title = ?, username = ?, password_encrypted = ?,
-                url = ?, category_id = ?, notes = ?,
-                is_favorite = ?, strength_score = ?, modified_at = ?
-            WHERE id = ?
-            """,
-            (
-                entry.title, entry.username, entry.password_encrypted,
-                entry.url, entry.category_id, entry.notes,
-                1 if entry.is_favorite else 0, entry.strength_score,
-                now, entry.id
+
+        if password_changed:
+            cursor.execute(
+                """
+                UPDATE password_entries
+                SET title = ?, username = ?, password_encrypted = ?,
+                    url = ?, category_id = ?, notes = ?,
+                    is_favorite = ?, strength_score = ?,
+                    modified_at = ?, password_changed_at = ?
+                WHERE id = ?
+                """,
+                (
+                    entry.title, entry.username, entry.password_encrypted,
+                    entry.url, entry.category_id, entry.notes,
+                    1 if entry.is_favorite else 0, entry.strength_score,
+                    now, now, entry.id
+                )
             )
-        )
+        else:
+            cursor.execute(
+                """
+                UPDATE password_entries
+                SET title = ?, username = ?,
+                    url = ?, category_id = ?, notes = ?,
+                    is_favorite = ?, modified_at = ?
+                WHERE id = ?
+                """,
+                (
+                    entry.title, entry.username,
+                    entry.url, entry.category_id, entry.notes,
+                    1 if entry.is_favorite else 0, now, entry.id
+                )
+            )
         connection.commit()
         return cursor.rowcount > 0
     except Exception as error:
@@ -152,7 +192,10 @@ def update_password(entry: PasswordEntry) -> bool:
 
 
 def delete_password(entry_id: int) -> bool:
-    """Delete a password entry."""
+    """Delete a password entry and its history."""
+    from modules.password_vault.core.history import delete_history_for_entry
+    delete_history_for_entry(entry_id)
+
     connection = _connect()
     try:
         cursor = connection.cursor()
@@ -170,9 +213,7 @@ def load_all_passwords() -> list[PasswordEntry]:
     connection = _connect()
     try:
         cursor = connection.cursor()
-        cursor.execute(
-            "SELECT * FROM password_entries ORDER BY title ASC"
-        )
+        cursor.execute("SELECT * FROM password_entries ORDER BY title ASC")
         return [_row_to_entry(row) for row in cursor.fetchall()]
     except Exception:
         return []
@@ -185,9 +226,7 @@ def get_password_by_id(entry_id: int) -> Optional[PasswordEntry]:
     connection = _connect()
     try:
         cursor = connection.cursor()
-        cursor.execute(
-            "SELECT * FROM password_entries WHERE id = ?", (entry_id,)
-        )
+        cursor.execute("SELECT * FROM password_entries WHERE id = ?", (entry_id,))
         row = cursor.fetchone()
         return _row_to_entry(row) if row else None
     finally:
@@ -225,8 +264,6 @@ def toggle_favorite(entry_id: int, is_favorite: bool) -> bool:
         connection.close()
 
 
-# ── Category operations ───────────────────────────────────────────────────────
-
 def load_all_categories() -> list[PasswordCategory]:
     """Load all password categories with entry counts."""
     connection = _connect()
@@ -256,8 +293,6 @@ def load_all_categories() -> list[PasswordCategory]:
     finally:
         connection.close()
 
-
-# ── Statistics ────────────────────────────────────────────────────────────────
 
 def get_password_statistics() -> dict:
     """Return password vault statistics."""
@@ -296,7 +331,7 @@ def get_password_statistics() -> dict:
 
 def _row_to_entry(row) -> PasswordEntry:
     """Convert a database row to a PasswordEntry object."""
-    return PasswordEntry(
+    entry = PasswordEntry(
         id                 = row["id"],
         title              = row["title"],
         username           = row["username"],
@@ -310,3 +345,9 @@ def _row_to_entry(row) -> PasswordEntry:
         modified_at        = row["modified_at"],
         last_accessed      = row["last_accessed"]
     )
+    # Attach password_changed_at if column exists
+    try:
+        entry.password_changed_at = row["password_changed_at"]
+    except (KeyError, IndexError):
+        entry.password_changed_at = row["modified_at"]
+    return entry

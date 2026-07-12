@@ -40,6 +40,7 @@ class PasswordEntry:
     created_at:         str           = ""
     modified_at:        str           = ""
     last_accessed:      Optional[str] = None
+    password_changed_at: Optional[str] = None
 
     def display_url(self) -> str:
         """Return a shortened URL for display."""
@@ -59,3 +60,4 @@ class PasswordEntry:
             return "Fair"
         else:
             return "Weak"
+
