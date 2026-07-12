@@ -16,6 +16,8 @@ from modules.password_vault.core.database import (
     initialize_password_database,
     get_password_statistics
 )
+from modules.password_vault.core.search_adapter import password_search_handler
+from vaultcore.search_framework import SearchAdapter
 
 
 class PasswordVaultModule(VaultModule):
@@ -37,6 +39,7 @@ class PasswordVaultModule(VaultModule):
         self._recent_items        = None
         self._storage_manager     = None
         self._parent_root         = None
+        self._search_framework    = None
 
     @property
     def module_id(self) -> str:
@@ -67,10 +70,12 @@ class PasswordVaultModule(VaultModule):
         notification_center,
         activity_service,
         recent_items,
-        storage_manager
+        storage_manager,
+        search_framework=None
     ) -> None:
         """Inject platform services from VaultCore."""
         self._parent_root         = parent_root
+        self._search_framework    = search_framework
         self._clipboard           = clipboard
         self._dialogs             = dialogs
         self._notifications       = notifications
@@ -84,6 +89,15 @@ class PasswordVaultModule(VaultModule):
         self._master_password = master_password
         self._initialized     = True
         initialize_password_database()
+
+        # Register search adapter with VaultCore Search Framework
+        if self._search_framework:
+            self._search_framework.register_adapter(SearchAdapter(
+                module_id = self.module_id,
+                handler   = password_search_handler
+            ))
+            log_info("[PasswordVault] Search adapter registered.")
+
         log_event("PasswordVaultInitialized")
         return True
 
@@ -208,3 +222,4 @@ class PasswordVaultModule(VaultModule):
             return "healthy"
         except Exception:
             return "unknown"
+
