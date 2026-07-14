@@ -48,6 +48,7 @@ from vaultcore.platform_actions import PlatformActions, register_platform_action
 
 from modules.document_vault.module import DocumentVaultModule
 from modules.password_vault.module import PasswordVaultModule
+from modules.secure_archive.module import SecureArchiveModule
 
 from ui.login import PlatformLoginScreen
 from ui.home import PlatformHome
@@ -209,8 +210,34 @@ class SecureVaultPlatform:
             vault_module = self._password_vault_module
         ))
 
+        # Register Secure Archive as native module
+        self._secure_archive_module = SecureArchiveModule()
+        self._secure_archive_module.inject_services(
+            parent_root         = self._root,
+            clipboard           = self._clipboard,
+            dialogs             = self._dialogs,
+            notifications       = self._notifications,
+            notification_center = self._notif_center,
+            activity_service    = self._activity_service,
+            recent_items        = self._recent_items,
+            storage_manager     = self._storage_manager,
+            search_framework    = self._search_framework,
+            command_registry    = self._command_registry
+        )
+
+        self._module_manager.register(ModuleDefinition(
+            id           = "secure_archive",
+            name         = "Secure Archive",
+            description  = "Intelligent project archiving\nwith verified restoration.",
+            icon         = "📦",
+            version      = "0.1.0",
+            available    = True,
+            launcher     = self._launch_secure_archive,
+            vault_module = self._secure_archive_module
+        ))
+
         for definition in [
-            ("secure_archive", "Secure Archive",  "Encrypted file archive\nwith compression support.",   "📦"),
+
             ("secure_notes",   "Secure Notes",    "Private encrypted notes\nwith rich text support.",    "📝"),
         ]:
             module_id, name, desc, icon = definition
@@ -225,6 +252,7 @@ class SecureVaultPlatform:
 
         self._storage_manager.provision_module("document_vault")
         self._storage_manager.provision_module("password_vault")
+        self._storage_manager.provision_module("secure_archive")
         log_info(f"Registered {len(self._module_manager.get_all())} modules")
 
     def _register_platform_commands(self) -> None:
@@ -270,6 +298,18 @@ class SecureVaultPlatform:
         self._password_vault_module.initialize(password)
         self._password_vault_module.launch()
 
+    def _launch_secure_archive(self) -> None:
+        """Initialize and launch Secure Archive."""
+        if not self._session_manager.is_authenticated():
+            self._notifications.error("Platform not authenticated.")
+            return
+        password = self._session_manager.get_master_password()
+        if not password:
+            return
+        self._secure_archive_module._master_password = password
+        self._secure_archive_module._initialized     = True
+        self._secure_archive_module.launch()
+
     def _clear_screen(self) -> None:
         for widget in self._root.winfo_children():
             widget.destroy()
@@ -289,6 +329,9 @@ class SecureVaultPlatform:
         if hasattr(self, "_password_vault_module") and password:
             self._password_vault_module._master_password = password
             self._password_vault_module._initialized     = True
+        if hasattr(self, "_secure_archive_module") and password:
+            self._secure_archive_module._master_password = password
+            self._secure_archive_module._initialized     = True
         self._notifications.success("Platform unlocked.")
         self._notif_center.add("Platform Unlocked", "Authentication successful.", "success")
         self._activity_service.record("PlatformUnlocked", "platform")
@@ -409,6 +452,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
 
 
