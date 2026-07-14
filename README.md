@@ -40,43 +40,34 @@ The long-term goal is to build an ecosystem of privacy-first desktop application
 
                              │
 
-┌────────────────────────────┬────────────────────────────┬────────────────────────────┬────────────────────────────┐
+┌──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│                      │                      │                      │
+▼                      ▼                      ▼                      ▼
 
-▼                            ▼                            ▼                            ▼
+Security Layer    Application Layer      Data Layer         Platform Services
 
-Security Layer         Application Layer           Data Layer              Platform Services
-
-Authentication         Module Manager              Storage Manager         Clipboard Manager
-
-Encryption             VaultModule Contract        Vault Filesystem        Dialog Framework
-
-Session Manager        Module Lifecycle            Metadata Service        Notification Center
-
-Activity Monitor       Module Registry             Storage Index           Recent Activity
-
-Auto Lock              Event Bus                   Workspace Manager       Recent Items
-
-Settings               Dashboard                   Backup Manager          Command Registry
-
-Notifications                                       Storage Health          Permission Manager
-
-Logging                                                                      Search Framework
-
-Theme                                                                        Import / Export Framework
-
-Database                                                                     Platform Actions
+Authentication    Module Manager         Storage Manager    Clipboard Manager
+Encryption        VaultModule Contract   Vault Filesystem   Dialog Framework
+Session Manager   Module Lifecycle       Metadata Service   Notification Center
+Activity Monitor  Module Registry        Storage Index      Recent Activity
+Auto Lock         Event Bus              Workspace Manager  Recent Items
+Settings          Dashboard              Backup Manager     Command Registry
+Notifications                            Storage Health     Permission Manager
+Logging                                                       Search Framework
+Theme                                                         Import / Export
+Database                                                      Platform Actions
 
                              │
 
-         ┌───────────────────┼────────────────────┬────────────────────┐
+         ┌───────────────────┼───────────────────┬───────────────────┐
 
-         ▼                   ▼                    ▼                    ▼
+         ▼                   ▼                   ▼                   ▼
 
- Document Vault      Password Vault       Secure Archive       Secure Notes
+ Document Vault       Password Vault       Secure Archive       Secure Notes
 
-     v1.0.0              v2.0.0               Planned              Planned
+     v1.0.0               v2.0.0               v0.1.0              Planned
 
- Feature Complete     Feature Complete      Next Focus          Future Module
+ Feature Complete      Feature Complete    Foundation Complete   Future Module
 ```
 
 ---
@@ -100,7 +91,7 @@ Capabilities include:
 
 Security responsibilities remain centralized within VaultCore.
 
-Modules consume security capabilities instead of implementing independent authentication or encryption systems.
+Modules consume security capabilities instead of implementing independent authentication or session systems.
 
 ---
 
@@ -126,29 +117,17 @@ Every native module follows the same lifecycle contract.
 
 ```text
 Register
-
-↓
-
+   ↓
 Initialize
-
-↓
-
+   ↓
 Authorize
-
-↓
-
+   ↓
 Launch
-
-↓
-
+   ↓
 Operate
-
-↓
-
+   ↓
 Publish Events
-
-↓
-
+   ↓
 Shutdown
 ```
 
@@ -198,12 +177,12 @@ These services eliminate duplicated infrastructure across modules and provide a 
 
 # Available Modules
 
-| Module            | Version | Status           |
-| ----------------- | ------- | ---------------- |
-| 📄 Document Vault | 1.0.0   | Feature Complete |
-| 🔒 Password Vault | 2.0.0   | Feature Complete |
-| 📦 Secure Archive | —       | Next Module      |
-| 📝 Secure Notes   | —       | Planned          |
+| Module            | Version | Status              |
+| ----------------- | ------- | ------------------- |
+| 📄 Document Vault | 1.0.0   | Feature Complete    |
+| 🔒 Password Vault | 2.0.0   | Feature Complete    |
+| 📦 Secure Archive | 0.1.0   | Foundation Complete |
+| 📝 Secure Notes   | —       | Planned             |
 
 ---
 
@@ -235,7 +214,7 @@ After reaching version 1.0.0, the application was integrated into Secure Vault P
 
 Document Vault is considered feature complete.
 
-Future development is limited primarily to:
+Future development is primarily limited to:
 
 * Bug fixes
 * Security fixes
@@ -250,11 +229,9 @@ Password Vault is the first module designed entirely around the VaultCore archit
 
 Unlike Document Vault, Password Vault was built natively for Secure Vault Platform and contains no duplicated platform infrastructure.
 
-Password Vault is now the **reference implementation for future native modules**.
+Password Vault serves as the reference implementation for native VaultCore modules.
 
-## Credential Management
-
-Capabilities include:
+## Core Capabilities
 
 * Secure encrypted password storage
 * Password entries
@@ -271,300 +248,558 @@ Capabilities include:
 * Password version timeline
 * Historical password restoration
 
-Search supports:
-
-* Title
-* Username
-* Website URL
-* Notes
-
 Passwords are explicitly excluded from search indexing and search results.
 
 ---
 
-## Password History
+## Password Security Intelligence
 
-Password Vault maintains encrypted password history.
+Password Vault includes a vault-wide credential security intelligence system.
 
-Historical password versions are stored only when the actual password value changes.
+Capabilities include:
 
-Metadata modifications do not create unnecessary history records.
-
-```text
-Current Password
-
-↓
-
-Password Changed
-
-↓
-
-Previous Password Encrypted
-
-↓
-
-History Record Created
-
-↓
-
-New Password Activated
-```
-
-Restoring an older password preserves the currently active password as another history entry.
-
-This prevents accidental loss of credential history.
-
----
-
-## Password Aging Intelligence
-
-Password Vault tracks password age using the actual password change timestamp.
-
-Age classifications include:
-
-| Age          | Classification |
-| ------------ | -------------- |
-| 0–89 days    | Fresh          |
-| 90–179 days  | Aging          |
-| 180–364 days | Old            |
-| 365+ days    | Critical       |
-
-Metadata changes do not reset password age.
-
-The dashboard displays age indicators and supports age-based filtering.
-
----
-
-## Security Intelligence
-
-Password Vault includes a vault-wide credential security audit engine.
-
-The engine detects:
-
-* Weak passwords
-* Reused passwords
-* Aging passwords
-* Old passwords
-* Critically old passwords
-* Common passwords
-
-Password reuse detection uses **keyed HMAC-SHA256 fingerprints**.
-
-Reuse fingerprints are:
-
-* Generated only during audit
-* Never stored in the database
-* Never written to logs
-* Never exposed through events
-
-Plaintext passwords are never persisted for reuse detection.
-
----
-
-## Vault Hygiene Score
-
-Password Vault calculates a vault-wide security hygiene score.
-
-The score considers:
-
-* Weak password ratio
-* Password reuse ratio
-* Old password ratio
-* Critical password age ratio
-* Common password ratio
-
-The Security Dashboard presents:
-
+* Password aging intelligence
+* Weak password detection
+* Password reuse detection
+* Common password detection
+* Vault-wide security audits
 * Vault Hygiene Score
-* Security grade
-* Credential statistics
-* Security metric cards
-* Severity-ranked findings
-* Manual security rescan
+* Security grading
+* Severity-ranked security findings
+* Manual security rescanning
 
-Findings are classified as:
+Password reuse detection uses temporary keyed HMAC-SHA256 fingerprints.
 
-* Critical
-* Warning
-* Info
+Reuse fingerprints are never:
 
-Security calculations remain inside the security audit engine rather than UI code.
+* Stored in the database
+* Written to logs
+* Published through events
 
 ---
 
-## Browser Credential Import
+## Password Data Portability
 
-Password Vault supports browser credential CSV imports.
+Password Vault supports:
 
-The generic CSV parser recognizes common field aliases used by browsers and password exports.
-
-Supported concepts include:
-
-* Name / Title
-* URL / Website / Origin
-* User / Username / Email / Login
-* Password / Pass
-* Notes / Comment
-
-Import flow:
-
-```text
-Select CSV
-
-↓
-
-Detect Headers
-
-↓
-
-Normalize Fields
-
-↓
-
-Validate Rows
-
-↓
-
-Detect Duplicates
-
-↓
-
-Preview Import
-
-↓
-
-Confirm
-
-↓
-
-Encrypt Passwords
-
-↓
-
-Store Credentials
-
-↓
-
-Publish Import Event
-```
-
-Passwords are encrypted immediately before storage.
-
-The platform warns users that the original CSV may still contain plaintext credentials.
-
----
-
-## Encrypted Vault Export
-
-Password Vault supports complete encrypted vault exports using the `.pvexport` format.
-
-Export security includes:
-
-* AES-256-GCM encryption
+* Browser credential CSV import
+* Header normalization
+* Import validation
+* Duplicate detection
+* Import previews
+* Encrypted `.pvexport` packages
+* Independent export passwords
+* AES-256-GCM export encryption
 * PBKDF2-HMAC-SHA256 key derivation
-* 600,000 PBKDF2 iterations
-* Fresh 32-byte salt per export
-* Fresh 12-byte nonce per export
-* Independent export encryption password
-* Versioned export payload
-
-Conceptual package structure:
-
-```text
-.pvexport
-
-├── Salt
-├── Nonce
-└── AES-256-GCM Encrypted Payload
-    ├── Format Version
-    ├── Module Version
-    ├── Export Metadata
-    ├── Password Entries
-    └── Password History
-```
-
-The export format is designed for future version compatibility.
-
----
-
-## Recovery Import
-
-Encrypted `.pvexport` packages can be restored through the Password Vault recovery workflow.
-
-```text
-Select Export Package
-
-↓
-
-Validate Package
-
-↓
-
-Check Format Version
-
-↓
-
-Request Export Password
-
-↓
-
-Derive Encryption Key
-
-↓
-
-Decrypt Payload
-
-↓
-
-Preview Recovery
-
-↓
-
-Detect Duplicates
-
-↓
-
-Import Entries
-
-↓
-
-Map Entry IDs
-
-↓
-
-Restore Password History
-
-↓
-
-Publish Recovery Event
-```
+* Recovery imports
+* Password history restoration
+* Versioned export payloads
 
 Recovery failures do not modify existing vault data.
 
-Unsupported format versions, incorrect passwords, and corrupted packages are rejected safely.
+Password Vault v2.0.0 is considered feature complete.
 
 ---
 
-## Password Vault Commands
+# Secure Archive
 
-Password Vault integrates with the VaultCore Command Registry.
+Secure Archive is the third native module of Secure Vault Platform.
 
-Registered commands include:
+The module is designed as an intelligent project-aware archival and restoration system rather than a traditional ZIP utility.
+
+Secure Archive analyzes input content, identifies meaningful project files, assigns compression strategies, creates a deterministic archive plan, records integrity metadata, and reconstructs archived data with SHA-256 verification.
+
+The Secure Archive foundation is complete as of version 0.1.0.
+
+---
+
+## Archive Philosophy
+
+Secure Archive separates:
 
 ```text
-password.create
-password.search
-password.generate
-password.audit
-password.import
-password.export
-password.restore
-password.show_favorites
-password.show_weak
-password.show_aging
+Analysis
+    ↓
+Planning
+    ↓
+Compression
+    ↓
+Packaging
+    ↓
+Restoration
+    ↓
+Integrity Verification
 ```
 
-This architecture prepares the platform for future capabilities such as:
+Compression, packaging, encryption, and restoration are treated as separate responsibilities.
+
+Each engine performs one clearly defined task.
+
+---
+
+## Secure Archive Pipeline
+
+```text
+Files / Folder
+      ↓
+Input Scanner
+      ↓
+Project Detector
+      ↓
+Ignore Engine
+      ↓
+File Classifier
+      ↓
+Compression Strategy Engine
+      ↓
+Archive Planner
+      ↓
+Immutable Archive Plan
+      ↓
+Checksum Engine
+      ↓
+Compression Engine
+      ↓
+Archive Manifest
+      ↓
+Package Writer
+      ↓
+Development Archive (.sva.dev)
+```
+
+Restoration follows the reverse trusted pipeline:
+
+```text
+.sva.dev Package
+      ↓
+Package Reader
+      ↓
+Manifest Version Validation
+      ↓
+Path Validation
+      ↓
+Payload Read
+      ↓
+Decompression Engine
+      ↓
+Directory Reconstruction
+      ↓
+File Restoration
+      ↓
+SHA-256 Verification
+      ↓
+Restore Report
+```
+
+A restore operation is successful only when all requested files are restored and every integrity check passes.
+
+---
+
+# Intelligent Input Scanning
+
+`InputScanner` recursively analyzes files and folders.
+
+The scanner:
+
+* Supports individual files
+* Supports complete directories
+* Handles permission errors
+* Handles empty directories
+* Produces deterministic sorted results
+* Returns structured scan metadata
+
+The scanner only describes the filesystem.
+
+It never decides which files should be archived.
+
+---
+
+# Project Detection
+
+`ProjectDetector` identifies common project types using deterministic marker files.
+
+Supported project types include:
+
+| Project | Marker                                           |
+| ------- | ------------------------------------------------ |
+| Flutter | `pubspec.yaml`                                   |
+| Rust    | `Cargo.toml`                                     |
+| Node.js | `package.json`                                   |
+| Python  | `pyproject.toml`, `setup.py`, `requirements.txt` |
+| Generic | Fallback                                         |
+
+Project detection uses priority ordering.
+
+No AI or source-content inspection is required.
+
+---
+
+# Project-Aware Ignore Engine
+
+The Ignore Engine identifies disposable or reproducible project artifacts.
+
+Examples include:
+
+### Python
+
+* `.venv`
+* `venv`
+* `__pycache__`
+* `*.pyc`
+* `.pytest_cache`
+* `dist`
+* `build`
+* `.egg-info`
+
+### Node.js
+
+* `node_modules`
+* `dist`
+* `build`
+* `.next`
+* `.cache`
+* `coverage`
+
+### Flutter
+
+* `build`
+* `.dart_tool`
+* `.flutter-plugins`
+
+### Rust
+
+* `target`
+* `Cargo.lock`
+
+### Universal
+
+* `.git`
+* `.DS_Store`
+* `Thumbs.db`
+* `*.tmp`
+* `*.swp`
+
+The Ignore Engine only recommends exclusions.
+
+It never modifies or deletes source files.
+
+---
+
+# File Classification
+
+`FileClassifier` categorizes files using extension-based deterministic classification.
+
+Supported categories include:
+
+* Source Code
+* Structured Text
+* Text
+* Documents
+* Images
+* Audio
+* Video
+* Archives
+* Binary
+* Unknown
+
+Classification is case-insensitive.
+
+The classifier never reads file contents.
+
+---
+
+# Intelligent Compression Strategy
+
+`CompressionStrategyEngine` assigns compression behavior based on file classification.
+
+| File Class      | Strategy       | Level |
+| --------------- | -------------- | ----- |
+| Source Code     | DEFLATE_HIGH   | 9     |
+| Text            | DEFLATE_HIGH   | 9     |
+| Structured Text | DEFLATE_HIGH   | 9     |
+| Documents       | DEFLATE_NORMAL | 6     |
+| Binary          | DEFLATE_FAST   | 3     |
+| Images          | STORE          | 0     |
+| Audio           | STORE          | 0     |
+| Video           | STORE          | 0     |
+| Archives        | STORE          | 0     |
+| Unknown         | DEFLATE_NORMAL | 6     |
+
+Every compression decision includes a diagnostic reason.
+
+The strategy engine only decides compression behavior.
+
+It never performs compression.
+
+---
+
+# Archive Planner
+
+`ArchivePlanner` combines archive intelligence into an immutable `ArchivePlan`.
+
+The plan contains:
+
+* Scan summary
+* Project profile
+* Included files
+* Ignored files
+* Ignore statistics
+* File classifications
+* Compression strategies
+* Original size
+* Planned archive input size
+* Strategy distribution
+
+The ArchivePlan becomes the source of truth for compression execution.
+
+Compression engines do not independently re-classify files or make compression decisions.
+
+---
+
+# Streaming Checksum Engine
+
+Secure Archive uses SHA-256 integrity fingerprints.
+
+`ChecksumEngine` supports:
+
+```text
+compute(path)
+compute_bytes(data)
+compute_stream(path)
+verify(path, expected)
+```
+
+Files are processed in 64 KB chunks.
+
+Large files do not need to be loaded entirely into memory.
+
+The same checksum engine is used during archive creation and restoration verification.
+
+---
+
+# Compression Execution Engine
+
+`CompressionEngine` executes the immutable ArchivePlan.
+
+For every archive entry:
+
+```text
+Read Source in Chunks
+        ↓
+Update SHA-256 Hasher
+        ↓
+Apply Planned Compression Strategy
+        ↓
+Stream Compressed Data
+        ↓
+Write Payload
+        ↓
+Record Compression Result
+```
+
+Streaming DEFLATE compression uses `zlib.compressobj`.
+
+The Compression Engine contains no file extension rules.
+
+It executes decisions made by the Compression Strategy Engine.
+
+---
+
+# Archive Manifest v1
+
+Every archive contains a versioned manifest.
+
+The manifest records:
+
+* Format version
+* Archive ID
+* Archive name
+* Module version
+* Project type
+* Creation timestamp
+* File count
+* Original size
+* Compressed size
+
+Every file records:
+
+* Relative path
+* Original size
+* Compressed size
+* SHA-256 checksum
+* File classification
+* Compression strategy
+* Compression level
+
+Conceptual manifest:
+
+```json
+{
+  "format_version": 1,
+  "archive_id": "uuid",
+  "archive_name": "project",
+  "module_version": "0.1.0",
+  "project_type": "python",
+  "created_at": "ISO-8601",
+  "file_count": 69,
+  "original_size": 352463,
+  "compressed_size": 132202,
+  "files": []
+}
+```
+
+Unsupported manifest versions are rejected immediately.
+
+Manifest paths must remain relative.
+
+---
+
+# Development Archive Format
+
+Secure Archive currently uses the explicit development format:
+
+```text
+.sva.dev
+```
+
+Conceptual structure:
+
+```text
+archive.sva.dev
+│
+├── manifest.json
+│
+└── payload/
+    ├── src/
+    │   ├── main.py
+    │   └── utils.py
+    │
+    └── README.md
+```
+
+ZIP currently acts only as the development container.
+
+`.sva.dev` is not the final encrypted Secure Vault Archive format.
+
+The development format exists to verify compression, packaging, restoration, and integrity independently before introducing encryption.
+
+---
+
+# Safe Restoration
+
+Secure Archive validates every restoration path before writing data.
+
+Rejected paths include:
+
+* Parent traversal paths
+* Absolute paths
+* Windows drive paths
+* UNC paths
+* Null-byte paths
+* Empty paths
+
+Examples:
+
+```text
+../file.txt
+/etc/passwd
+C:\Windows\file.txt
+\\server\share
+file\x00.txt
+```
+
+All destination paths must resolve inside the selected restoration root.
+
+Path validation occurs before any file is written.
+
+---
+
+# Verified Restoration Pipeline
+
+`RestoreEngine` orchestrates restoration.
+
+```text
+Open Package
+      ↓
+Read Manifest
+      ↓
+Validate Format Version
+      ↓
+For Every File
+      ↓
+Validate Relative Path
+      ↓
+Create Parent Directories
+      ↓
+Read Compressed Payload
+      ↓
+Decompress Using Manifest Strategy
+      ↓
+Write Restored File
+      ↓
+Compute SHA-256
+      ↓
+Compare Manifest Checksum
+      ↓
+Generate Restore Report
+```
+
+The restoration engine trusts the manifest for compression metadata.
+
+It never re-classifies restored files.
+
+A restore operation succeeds only when:
+
+```text
+Files Restored == Files Requested
+
+AND
+
+Integrity Checks Passed == Files Restored
+```
+
+---
+
+# Secure Archive Events
+
+Secure Archive publishes domain facts through the VaultCore Event Bus.
+
+Events include:
+
+```text
+archive.analysis_completed
+archive.creation_started
+archive.created
+archive.creation_failed
+archive.restore_started
+archive.restored
+archive.restore_failed
+archive.integrity_failed
+```
+
+Event payloads contain only safe metadata.
+
+They never contain:
+
+* Absolute filesystem paths
+* File contents
+* Encryption keys
+* Secrets
+
+---
+
+# Secure Archive Commands
+
+Secure Archive registers four platform commands:
+
+```text
+archive.create
+archive.analyze
+archive.restore
+archive.show_recent
+```
+
+This enables future integration with:
 
 * Command Palette
 * Keyboard shortcuts
@@ -573,84 +808,131 @@ This architecture prepares the platform for future capabilities such as:
 
 ---
 
-## Password Vault Domain Events
+# Secure Archive Dashboard
 
-Password Vault publishes domain events through the VaultCore Event Bus.
+The native Secure Archive dashboard provides:
 
-| Event                         | Description                   |
-| ----------------------------- | ----------------------------- |
-| `password.created`            | Credential created            |
-| `password.updated`            | Credential updated            |
-| `password.deleted`            | Credential deleted            |
-| `password.changed`            | Password value changed        |
-| `password.favorite_changed`   | Favorite state changed        |
-| `password.copied`             | Password copied               |
-| `password.history_restored`   | Historical password restored  |
-| `password.audit_completed`    | Security audit completed      |
-| `password.import_completed`   | CSV import completed          |
-| `password.export_completed`   | Encrypted export completed    |
-| `password.recovery_completed` | Recovery import completed     |
-| `password.saved`              | Generic credential save event |
+```text
+📦 Create Archive
+🔄 Restore Archive
+```
 
-Event payloads never contain:
+Archive creation flow:
 
-* Plaintext passwords
-* Encryption keys
-* Salts
-* Nonces
-* Password reuse fingerprints
+```text
+Pick Folder
+      ↓
+Analyze
+      ↓
+Preview Archive Plan
+      ↓
+Confirm
+      ↓
+Choose Save Location
+      ↓
+Create Archive
+      ↓
+Show Archive Report
+```
 
-Events describe completed facts and do not directly command other modules.
+Restore flow:
+
+```text
+Select .sva.dev
+      ↓
+Choose Destination
+      ↓
+Preview Manifest
+      ↓
+Confirm
+      ↓
+Restore
+      ↓
+Verify Integrity
+      ↓
+Show Restore Report
+```
+
+UI classes only orchestrate domain services.
+
+No compression or archive intelligence lives in Tkinter callbacks.
 
 ---
 
-# Password Vault Architecture
+# Secure Archive Architecture
 
 ```text
-Password Vault
-        │
-────────┴────────
-   Domain Areas
-────────┬────────
-        │
-        ├── Credential Management
-        │       │
-        │       ├── Password Entries
-        │       ├── Categories
-        │       ├── Favorites
-        │       ├── Filter Engine
-        │       ├── Sort Engine
-        │       └── History Engine
-        │
-        ├── Security Intelligence
-        │       │
-        │       ├── Strength Analyzer
-        │       ├── Aging Engine
-        │       ├── Reuse Detector
-        │       ├── Security Audit Engine
-        │       └── Hygiene Score
-        │
-        └── Data Portability
-                │
-                ├── CSV Import
-                ├── Encrypted Export
-                ├── Recovery Import
-                └── Duplicate Detection
+Secure Archive
+       │
+       ├── Analysis Layer
+       │      ├── Input Scanner
+       │      ├── Project Detector
+       │      ├── Ignore Engine
+       │      └── File Classifier
+       │
+       ├── Planning Layer
+       │      ├── Compression Strategy
+       │      └── Archive Planner
+       │
+       ├── Execution Layer
+       │      ├── Checksum Engine
+       │      └── Compression Engine
+       │
+       ├── Package Layer
+       │      ├── Manifest Builder
+       │      ├── Package Writer
+       │      └── Package Reader
+       │
+       ├── Restoration Layer
+       │      ├── Path Validator
+       │      ├── Decompression Engine
+       │      └── Restore Engine
+       │
+       └── Integration Layer
+              ├── Reports
+              ├── Domain Events
+              ├── Commands
+              └── Dashboard
 
-                        │
+                       │
 
-                        ▼
+                       ▼
 
                     VaultCore
-
-        ┌───────────────┼────────────────┐
-        │               │                │
- Security Layer   Application Layer   Data Layer
-        │               │                │
-        └───────────────┼────────────────┘
-                        │
-               Platform Services
 ```
+
+---
+
+# Secure Archive Verification
+
+Sprint 14 completed full end-to-end verification.
+
+```text
+Tests Run:         5
+Tests Passed:      5
+Tests Failed:      0
+
+Integrity Checks:  196
+Integrity Passed:  196
+Integrity Failed:  0
+```
+
+Round-trip archive tests:
+
+```text
+vaultcore                 69 files — PASS
+password_vault module     58 files — PASS
+secure_archive module     69 files — PASS
+```
+
+Security verification confirmed:
+
+* Unsafe restoration paths are rejected
+* Unsupported manifest versions are rejected
+* Restored files match original SHA-256 checksums
+* No absolute paths are exposed through archive events
+* Existing Document Vault functionality remains operational
+* Existing Password Vault functionality remains operational
 
 ---
 
@@ -658,109 +940,57 @@ Password Vault
 
 ```text
 Launch Platform
-
-↓
-
+      ↓
 Initialize VaultCore
-
-↓
-
+      ↓
 Initialize Security Layer
-
-↓
-
+      ↓
 Initialize Application Layer
-
-↓
-
+      ↓
 Initialize Data Layer
-
-↓
-
-Initialize Platform Services Layer
-
-↓
-
+      ↓
+Initialize Platform Services
+      ↓
 Register Modules
-
-↓
-
+      ↓
 Platform Login
-
-↓
-
+      ↓
 Authenticate User
-
-↓
-
+      ↓
 Create Session
-
-↓
-
+      ↓
 Platform Dashboard
-
-↓
-
+      ↓
 Select Module
-
-↓
-
+      ↓
 Module Manager
-
-↓
-
+      ↓
 Authorize Module
-
-↓
-
+      ↓
 Initialize Module
-
-↓
-
+      ↓
 Provision Module Storage
-
-↓
-
+      ↓
 Inject Platform Services
-
-↓
-
+      ↓
 Launch Module
-
-↓
-
+      ↓
 Module Business Logic
-
-↓
-
+      ↓
 Platform Services
-
-↓
-
+      ↓
 Event Bus
-
-↓
-
+      ↓
 Logger • Notifications • Activity • Search
-
-↓
-
+      ↓
 Activity Monitoring
-
-↓
-
+      ↓
 Auto Lock / Module Exit
-
-↓
-
+      ↓
 Module Shutdown
-
-↓
-
+      ↓
 Workspace Cleanup
-
-↓
-
+      ↓
 Session Destroyed
 ```
 
@@ -780,43 +1010,49 @@ SecureVaultPlatform/
 ├── vaultcore/
 │
 ├── modules/
-│   │
 │   ├── document_vault/
 │   │
 │   ├── password_vault/
-│   │   ├── core/
-│   │   │   ├── aging_engine.py
-│   │   │   ├── commands.py
-│   │   │   ├── csv_import.py
-│   │   │   ├── database.py
-│   │   │   ├── filter_engine.py
-│   │   │   ├── generator.py
-│   │   │   ├── history.py
-│   │   │   ├── reuse_detector.py
-│   │   │   ├── search_adapter.py
-│   │   │   ├── security_audit.py
-│   │   │   ├── strength.py
-│   │   │   ├── vault_export.py
-│   │   │   └── vault_import.py
-│   │   │
-│   │   ├── models/
-│   │   │   ├── audit_result.py
-│   │   │   ├── password_category.py
-│   │   │   ├── password_entry.py
-│   │   │   └── password_history.py
-│   │   │
-│   │   ├── ui/
-│   │   │   ├── dashboard.py
-│   │   │   ├── generator_dialog.py
-│   │   │   ├── history_panel.py
-│   │   │   ├── import_dialog.py
-│   │   │   ├── password_editor.py
-│   │   │   ├── recovery_dialog.py
-│   │   │   └── security_dashboard.py
-│   │   │
-│   │   └── module.py
 │   │
 │   ├── secure_archive/
+│   │   ├── module.py
+│   │   │
+│   │   ├── core/
+│   │   │   ├── input_scanner.py
+│   │   │   ├── project_detector.py
+│   │   │   ├── ignore_engine.py
+│   │   │   ├── file_classifier.py
+│   │   │   ├── compression_strategy.py
+│   │   │   ├── archive_planner.py
+│   │   │   ├── checksum_engine.py
+│   │   │   ├── compression_engine.py
+│   │   │   ├── manifest_builder.py
+│   │   │   ├── package_writer.py
+│   │   │   ├── package_reader.py
+│   │   │   ├── decompression_engine.py
+│   │   │   ├── path_validator.py
+│   │   │   ├── restore_engine.py
+│   │   │   ├── report_builder.py
+│   │   │   ├── events.py
+│   │   │   └── commands.py
+│   │   │
+│   │   ├── models/
+│   │   │   ├── scan.py
+│   │   │   ├── project.py
+│   │   │   ├── ignore.py
+│   │   │   ├── classification.py
+│   │   │   ├── compression.py
+│   │   │   ├── archive_plan.py
+│   │   │   ├── compression_result.py
+│   │   │   ├── manifest.py
+│   │   │   ├── restore_result.py
+│   │   │   └── reports.py
+│   │   │
+│   │   └── ui/
+│   │       ├── dashboard.py
+│   │       ├── archive_plan_view.py
+│   │       └── restore_view.py
+│   │
 │   └── secure_notes/
 │
 ├── ui/
@@ -852,6 +1088,11 @@ SecureVaultPlatform/
 * PBKDF2-HMAC-SHA256
 * HMAC-SHA256
 * SHA-256
+
+## Compression
+
+* zlib
+* DEFLATE
 
 ## File Processing
 
@@ -935,43 +1176,44 @@ Delivered:
 
 ## Sprint 12 — Password Vault Foundation
 
-Delivered Password Vault v1.0.0:
-
-* Native Password Vault module
-* Password Entry model
-* Password categories
-* Password generator
-* Password strength analyzer
-* Secure password storage
-* Clipboard integration
-* Dashboard and statistics
-* Complete VaultCore integration
+Delivered Password Vault v1.0.0.
 
 ---
 
 ## Sprint 13 — Password Vault Completion
 
-Delivered Password Vault v2.0.0:
+Delivered Password Vault v2.0.0.
 
-* Native Search Framework integration
-* Advanced filters and sorting
-* Favorites
-* Encrypted password history
-* Password version restore
-* Password aging intelligence
-* Vault-wide credential security audit
-* Password reuse detection
-* Vault Hygiene Score
-* Security Dashboard
-* Browser credential CSV import
-* Encrypted `.pvexport` packages
-* Encrypted recovery import
+Password Vault is feature complete.
+
+---
+
+## Sprint 14 — Secure Archive Foundation
+
+Delivered Secure Archive v0.1.0:
+
+* Native Secure Archive module
+* Recursive filesystem scanning
+* Deterministic project detection
+* Project-aware ignore engine
+* File classification
+* Intelligent compression strategy
+* Immutable archive planning
+* Streaming SHA-256 checksums
+* Plan-driven compression execution
+* Archive Manifest v1
+* `.sva.dev` package writer
+* `.sva.dev` package reader
+* Safe restoration path validation
+* Decompression engine
+* Verified restoration pipeline
+* Archive reports
+* Domain events
 * Command Registry integration
-* Complete domain event model
-* Security verification
-* Full regression testing
+* Native archive dashboard
+* End-to-end archive verification
 
-Password Vault is now considered feature complete.
+Secure Archive foundation is complete.
 
 ---
 
@@ -990,130 +1232,103 @@ Password Vault is now considered feature complete.
 
 # Module Status
 
-| Module         | Version | Status                 |
-| -------------- | ------- | ---------------------- |
-| Document Vault | 1.0.0   | Feature Complete       |
-| Password Vault | 2.0.0   | Feature Complete       |
-| Secure Archive | —       | Next Development Focus |
-| Secure Notes   | —       | Planned                |
-
-Password Vault now enters a temporary feature freeze.
-
-Future Password Vault development will primarily focus on:
-
-* Bug fixes
-* Security fixes
-* UX refinement
-* VaultCore compatibility
-* Platform-wide integration improvements
+| Module         | Version | Status              |
+| -------------- | ------- | ------------------- |
+| Document Vault | 1.0.0   | Feature Complete    |
+| Password Vault | 2.0.0   | Feature Complete    |
+| Secure Archive | 0.1.0   | Foundation Complete |
+| Secure Notes   | —       | Planned             |
 
 ---
 
 # Current Roadmap
 
-## Next Development Focus — Secure Archive
+## Next Development Focus — Secure Vault Archive Format
 
-Secure Archive will become the third major Secure Vault Platform module.
+The next Secure Archive phase will transform the trusted `.sva.dev` development package into the final encrypted Secure Vault Archive format.
 
-The goal is not to build a traditional ZIP utility.
-
-Secure Archive is intended to become an intelligent encrypted archival and project preservation system.
-
-Conceptual archive pipeline:
-
-```text
-Folder / Files
-
-↓
-
-Analyze Input
-
-↓
-
-Detect Project Type
-
-↓
-
-Classify Files
-
-↓
-
-Select Compression Strategy
-
-↓
-
-Compress Data
-
-↓
-
-Generate Manifest
-
-↓
-
-Generate Checksums
-
-↓
-
-Encrypt Package
-
-↓
-
-Create Secure Vault Archive
-```
-
-Future Secure Archive capabilities are expected to include:
-
-* Arbitrary file and folder archiving
-* Intelligent project detection
-* File classification
-* Smart compression strategy
-* Compression and decompression engines
-* Archive manifests
-* SHA-256 integrity records
-* Encrypted archive packages
-* Exact folder hierarchy restoration
-* Selective restore
-* Archive browsing
-* Archive search
-* Secure Vault Archive format
-
-Proposed native archive extension:
+Proposed native extension:
 
 ```text
 .sva
 ```
 
-Conceptual structure:
+The next architecture should introduce:
+
+* Secure archive envelope
+* Archive format header
+* Format version identification
+* Password-based key derivation
+* Fresh archive salt
+* Fresh AES-GCM nonce
+* AES-256-GCM authenticated encryption
+* Encrypted archive payload
+* Archive authentication before restoration
+* Wrong-password rejection
+* Corruption and tampering detection
+* Secure temporary payload handling
+* Final `.sva` reader and writer
+* Migration away from `.sva.dev` for user-facing archives
+
+Conceptual creation flow:
 
 ```text
-.sva
-
-├── Header
-├── Manifest
-├── Compressed Data
-├── Integrity Records
-├── Encryption Metadata
-└── Version Information
+Archive Plan
+      ↓
+Trusted Compression Pipeline
+      ↓
+Manifest + Compressed Payload
+      ↓
+Build Archive Payload
+      ↓
+Create SVA Header
+      ↓
+Generate Salt
+      ↓
+Derive Archive Key
+      ↓
+Generate Nonce
+      ↓
+AES-256-GCM Encrypt Payload
+      ↓
+Write .sva Archive
 ```
 
-Secure Archive will follow the same architectural discipline established by Password Vault.
+Conceptual restoration flow:
 
----
-
-# Getting Started
-
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python app.py
+```text
+.sva Archive
+      ↓
+Read Public Header
+      ↓
+Validate Format Version
+      ↓
+Read KDF Parameters
+      ↓
+Request Archive Password
+      ↓
+Derive Archive Key
+      ↓
+Authenticate + Decrypt Payload
+      ↓
+Recover Trusted Archive Package
+      ↓
+Existing Restore Pipeline
+      ↓
+Restore Files
+      ↓
+SHA-256 Verify Every File
 ```
+
+Encryption should wrap the existing trusted archive pipeline.
+
+Compression engines, project detection, file classification, archive planning, and restoration logic should remain independent from cryptographic concerns.
 
 ---
 
 # Repository Status
 
-**Current Version:** **v0.7.0**
+**Current Platform Version:** **v0.8.0**
 
 **Status:** Active Development
 
@@ -1121,11 +1336,13 @@ python app.py
 
 **VaultCore Foundation:** Complete
 
-**Native Modules:** 2
+**Native Modules:** 3
 
 **Feature Complete Modules:** 2
 
-**Next Module:** Secure Archive
+**Secure Archive:** Foundation Complete
+
+**Current Focus:** Encrypted Secure Vault Archive Format
 
 **License:** MIT
 
@@ -1137,7 +1354,11 @@ python app.py
 
 > If a capability is unique to a specific application, it belongs in the **module**.
 
-This principle keeps Secure Vault Platform scalable, maintainable, secure, and consistent as additional privacy-first desktop applications are introduced.
+Secure Archive introduces an additional engineering principle:
+
+> Analysis decides. Planning freezes intent. Execution follows the plan. Restoration trusts metadata and verifies content.
+
+These principles keep Secure Vault Platform scalable, maintainable, secure, and deterministic.
 
 ---
 
@@ -1151,7 +1372,7 @@ Secure Vault Platform is a long-term open-source project focused on building a m
 
 VaultCore provides reusable infrastructure for authentication, encryption, storage, lifecycle management, metadata, search, permissions, platform services, and module communication.
 
-This allows every module to focus exclusively on its domain logic while inheriting a secure and consistent platform foundation.
+Each module owns its domain logic while inheriting a secure and consistent platform foundation.
 
 **GitHub:** https://github.com/raghavendrashivam474
 
@@ -1167,27 +1388,28 @@ This allows every module to focus exclusively on its domain logic while inheriti
 | **v0.4.0** | Data Layer — Storage Manager, Vault Filesystem, Metadata Service, Backup Manager             |
 | **v0.5.0** | Platform Services Layer — Clipboard, Dialogs, Notifications, Search, Commands, Import/Export |
 | **v0.6.0** | Password Vault v1.0 — First Native VaultCore Module                                          |
-| **v0.7.0** | Password Vault v2.0 — Security Intelligence, History, Data Portability, Feature Completion   |
+| **v0.7.0** | Password Vault v2.0 — Security Intelligence, History, Data Portability                       |
+| **v0.8.0** | Secure Archive v0.1 — Intelligent Compression, Manifest Packaging, Verified Restoration      |
 
 ---
 
 # Long-Term Vision
 
-Secure Vault Platform now consists of four completed architectural layers:
+Secure Vault Platform currently consists of four completed VaultCore architectural layers:
 
 1. Security Layer
 2. Application Layer
 3. Data Layer
 4. Platform Services Layer
 
-Built on this foundation are the platform's secure applications:
+Built on this foundation are three operational secure applications:
 
 * ✅ Document Vault
 * ✅ Password Vault
 * 🚧 Secure Archive
 * 📋 Secure Notes
 
-Password Vault demonstrates the intended native development model for the ecosystem:
+The native module architecture follows one consistent model:
 
 ```text
 VaultCore
@@ -1205,12 +1427,36 @@ VaultCore
               └── Consumes Platform Services
 ```
 
-Every future architectural decision should answer one question:
+Secure Archive extends this model with a deterministic processing pipeline:
+
+```text
+Describe Reality
+      ↓
+Infer Context
+      ↓
+Recommend Exclusions
+      ↓
+Classify Content
+      ↓
+Choose Strategy
+      ↓
+Freeze Intent
+      ↓
+Execute Plan
+      ↓
+Record Reality
+      ↓
+Restore from Metadata
+      ↓
+Verify Content
+```
+
+Every future architectural decision should continue to answer:
 
 > **Does this responsibility belong to VaultCore or does it belong to the module?**
 
-If the capability can be reused across multiple secure applications, it belongs in **VaultCore**.
+If a capability can be reused across multiple secure applications, it belongs in **VaultCore**.
 
-If the capability is unique to one application domain, it belongs in the corresponding **module**.
+If a capability is unique to one application domain, it belongs in the corresponding **module**.
 
-Secure Vault Platform will continue evolving through this separation of infrastructure and domain logic, enabling a scalable ecosystem of secure, offline-first desktop applications.
+Secure Vault Platform will continue evolving through strict separation of infrastructure, domain intelligence, execution, and verification, enabling a scalable ecosystem of secure, offline-first desktop applications.
