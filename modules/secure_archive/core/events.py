@@ -27,6 +27,13 @@ EVENT_RESTORED             = "archive.restored"
 EVENT_RESTORE_FAILED       = "archive.restore_failed"
 EVENT_INTEGRITY_FAILED     = "archive.integrity_failed"
 
+# Sprint 15 encryption events
+EVENT_ENCRYPTION_STARTED   = "archive.encryption_started"
+EVENT_ENCRYPTION_COMPLETED = "archive.encryption_completed"
+EVENT_DECRYPTION_STARTED   = "archive.decryption_started"
+EVENT_DECRYPTION_COMPLETED = "archive.decryption_completed"
+EVENT_AUTH_FAILED          = "archive.authentication_failed"
+
 
 def publish_analysis_completed(
     archive_name: str,
@@ -162,3 +169,64 @@ def publish_integrity_failed(
         "ArchiveIntegrityFailed",
         f"{archive_name}: {failures} files failed integrity check"
     )
+
+
+def publish_encryption_started(
+    archive_name: str,
+    file_count: int
+) -> None:
+    """Publish archive.encryption_started event."""
+    platform_bus.publish(EVENT_ENCRYPTION_STARTED, {
+        "archive_name": archive_name,
+        "file_count":   file_count,
+    })
+    log_event(
+        "ArchiveEncryptionStarted",
+        f"{archive_name}: {file_count} files"
+    )
+
+
+def publish_encryption_completed(
+    archive_name: str,
+    file_size: int
+) -> None:
+    """Publish archive.encryption_completed event."""
+    platform_bus.publish(EVENT_ENCRYPTION_COMPLETED, {
+        "archive_name": archive_name,
+        "file_size":    file_size,
+    })
+    log_event(
+        "ArchiveEncryptionCompleted",
+        f"{archive_name}: {file_size:,} bytes"
+    )
+
+
+def publish_decryption_started(archive_name: str) -> None:
+    """Publish archive.decryption_started event."""
+    platform_bus.publish(EVENT_DECRYPTION_STARTED, {
+        "archive_name": archive_name,
+    })
+    log_event("ArchiveDecryptionStarted", archive_name)
+
+
+def publish_decryption_completed(
+    archive_name: str,
+    files_restored: int
+) -> None:
+    """Publish archive.decryption_completed event."""
+    platform_bus.publish(EVENT_DECRYPTION_COMPLETED, {
+        "archive_name":   archive_name,
+        "files_restored": files_restored,
+    })
+    log_event(
+        "ArchiveDecryptionCompleted",
+        f"{archive_name}: {files_restored} files"
+    )
+
+
+def publish_authentication_failed(archive_name: str) -> None:
+    """Publish archive.authentication_failed event."""
+    platform_bus.publish(EVENT_AUTH_FAILED, {
+        "archive_name": archive_name,
+    })
+    log_event("ArchiveAuthenticationFailed", archive_name)

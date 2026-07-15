@@ -54,7 +54,7 @@ class SecureArchiveModule(VaultModule):
 
     @property
     def version(self) -> str:
-        return "0.1.0"
+        return "0.2.0"
 
     @property
     def description(self) -> str:
@@ -197,3 +197,4 @@ class SecureArchiveModule(VaultModule):
     def health(self) -> str:
         """Return current health status."""
         return "healthy"
+
