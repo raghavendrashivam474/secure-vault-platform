@@ -71,6 +71,24 @@ class ArchiveManifest:
     compressed_size:     int
     files:               list[ManifestFileEntry] = field(default_factory=list)
 
+    # Manifest v2 additions (Sprint 16)
+    archive_root:        str         = ""
+    original_source_path: str        = ""
+    directory_paths:     list[str]   = field(default_factory=list)
+    empty_directory_count: int       = 0
+
+    # Manifest v2 additions (Sprint 16)
+    archive_root:        str         = ""
+    original_source_path: str        = ""
+    directory_paths:     list[str]   = field(default_factory=list)
+    empty_directory_count: int       = 0
+
+    # Manifest v2 additions (Sprint 16)
+    archive_root:        str         = ""
+    original_source_path: str        = ""
+    directory_paths:     list[str]   = field(default_factory=list)
+    empty_directory_count: int       = 0
+
     def to_json(self) -> str:
         """Serialize manifest to JSON string."""
         data = {
@@ -84,6 +102,18 @@ class ArchiveManifest:
             "file_count":         self.file_count,
             "original_size":      self.original_size,
             "compressed_size":    self.compressed_size,
+            "archive_root":         self.archive_root,
+            "original_source_path": self.original_source_path,
+            "directory_paths":      self.directory_paths,
+            "empty_directory_count": self.empty_directory_count,
+            "archive_root":         self.archive_root,
+            "original_source_path": self.original_source_path,
+            "directory_paths":      self.directory_paths,
+            "empty_directory_count": self.empty_directory_count,
+            "archive_root":         self.archive_root,
+            "original_source_path": self.original_source_path,
+            "directory_paths":      self.directory_paths,
+            "empty_directory_count": self.empty_directory_count,
             "files": [
                 {
                     "path":                 f.path,
@@ -145,9 +175,15 @@ class ArchiveManifest:
             original_size      = data["original_size"],
             compressed_size    = data["compressed_size"],
             files              = files,
+            archive_root       = data.get("archive_root", ""),
+            original_source_path = data.get("original_source_path", ""),
+            directory_paths    = data.get("directory_paths", []),
+            empty_directory_count = data.get("empty_directory_count", 0),
         )
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "ArchiveManifest":
         """Deserialize from UTF-8 bytes."""
         return cls.from_json(data.decode("utf-8"))
+
+

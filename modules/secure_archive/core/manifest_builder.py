@@ -30,7 +30,8 @@ class ManifestBuilder:
     def build(
         self,
         plan: ArchivePlan,
-        run_result: CompressionRunResult
+        run_result: CompressionRunResult,
+        root_info = None
     ) -> ArchiveManifest:
         """
         Build the manifest from plan and compression results.
@@ -77,4 +78,9 @@ class ManifestBuilder:
             original_size      = run_result.total_original,
             compressed_size    = run_result.total_compressed,
             files              = file_entries,
+            archive_root       = root_info.archive_root if root_info else plan.archive_name,
+            original_source_path = root_info.original_path if root_info else "",
+            directory_paths    = root_info.directory_paths if root_info else [],
+            empty_directory_count = root_info.empty_dir_count if root_info else 0,
         )
+
