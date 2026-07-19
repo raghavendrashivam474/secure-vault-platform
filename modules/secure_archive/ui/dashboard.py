@@ -2,10 +2,18 @@
 modules/secure_archive/ui/dashboard.py
 
 Secure Archive dashboard - Sprint 15 integrated.
+Sprint 17: Scanning moved to background via ExecutionEngine.
+Sprint 17 extension: Archive creation also moved to background.
 
-Now supports both .sva (encrypted, default) and .sva.dev (development).
-Users interact primarily with .sva. The .sva.dev format remains
-available for debugging.
+The UI never freezes:
+    - InputScanner runs inside ScanExecutable          (worker thread)
+    - Compression + encryption runs inside
+      CreateArchiveExecutable                          (worker thread)
+
+Event routing:
+    Worker publishes ExecutionCompletedEvent
+        → _on_execution_complete_worker() marshals to main thread
+        → _handle_execution_complete() dispatches by task_name
 """
 
 import time
@@ -16,6 +24,16 @@ import tkinter as tk
 from tkinter import filedialog, simpledialog
 
 from vaultcore.theme import Theme
+
+# Sprint 17 — execution framework
+from vaultcore.execution.interfaces.execution_request import ExecutionRequest
+from vaultcore.execution.interfaces.execution_result import ExecutionResult
+from vaultcore.execution.events.execution_events import (
+    ExecutionCompletedEvent,
+    ExecutionFailedEvent,
+)
+from modules.secure_archive.core.scan_executable import ScanExecutable
+from modules.secure_archive.core.create_archive_executable import CreateArchiveExecutable
 
 # Sprint 14 pipeline
 from modules.secure_archive.core.input_scanner import InputScanner
@@ -45,17 +63,14 @@ from modules.secure_archive.ui.restore_view import (
 )
 
 
+# Task name constants — used to route completion events.
+TASK_SCAN   = "Archive Scan"
+TASK_CREATE = "Archive Creation"
+
+
 class SecureArchiveDashboard(tk.Frame):
     """
     Secure Archive dashboard with encrypted .sva support.
-
-    Primary workflows:
-        - Create Secure Archive (.sva, encrypted)
-        - Restore Secure Archive (.sva)
-
-    Development workflows still available:
-        - Create Development Archive (.sva.dev, unencrypted)
-        - Restore Development Archive
     """
 
     def __init__(
@@ -69,6 +84,7 @@ class SecureArchiveDashboard(tk.Frame):
         activity_service,
         recent_items,
         storage_manager,
+        execution_engine,          # Sprint 17
         on_close: Callable
     ) -> None:
         super().__init__(parent, bg=Theme.BACKGROUND)
@@ -80,10 +96,14 @@ class SecureArchiveDashboard(tk.Frame):
         self._activity_service    = activity_service
         self._recent_items        = recent_items
         self._storage_manager     = storage_manager
+        self._execution_engine    = execution_engine
         self._on_close            = on_close
 
-        # Domain services
-        self._scanner      = InputScanner()
+        # Continuation state for scan → plan → confirm → create workflow
+        # "secure" or "dev" — set before submitting a scan
+        self._pending_scan_mode: Optional[str] = None
+
+        # Domain services (business logic only — no execution concerns)
         self._detector     = ProjectDetector()
         self._ignore       = IgnoreEngine()
         self._classifier   = FileClassifier()
@@ -100,12 +120,140 @@ class SecureArchiveDashboard(tk.Frame):
         self._reporter     = ReportBuilder()
         self._error_mapper = ArchiveErrorMapper()
 
+        # Sprint 17 — subscribe to execution events BEFORE building UI
+        self._subscribe_execution_events()
+
         self._build()
+
+    # ── Sprint 17 — Execution event wiring ────────────────────────────────────
+
+    def _subscribe_execution_events(self) -> None:
+        """
+        Subscribe to ExecutionEngine events.
+
+        Handlers run on the worker thread — they must marshal to
+        the main thread via self.after() before touching tkinter.
+        """
+        dispatcher = self._execution_engine.dispatcher
+        dispatcher.subscribe(ExecutionCompletedEvent, self._on_execution_complete_worker)
+        dispatcher.subscribe(ExecutionFailedEvent,    self._on_execution_failed_worker)
+
+    # ---- worker-thread entry points ----
+
+    def _on_execution_complete_worker(self, event: ExecutionCompletedEvent) -> None:
+        self.after(0, lambda: self._handle_execution_complete(event))
+
+    def _on_execution_failed_worker(self, event: ExecutionFailedEvent) -> None:
+        self.after(0, lambda: self._handle_execution_failed(event))
+
+    # ---- main-thread dispatch ----
+
+    def _handle_execution_complete(self, event: ExecutionCompletedEvent) -> None:
+        """Route completion events by task name."""
+        task_name = event.task.task_name
+
+        if task_name == TASK_SCAN:
+            self._on_scan_complete(event.result)
+        elif task_name == TASK_CREATE:
+            self._on_archive_created(event.result)
+        # Other tasks — ignore for now.
+
+    def _handle_execution_failed(self, event: ExecutionFailedEvent) -> None:
+        """Route failure events by task name."""
+        task_name = event.task.task_name
+        error_msg = str(event.error) if event.error else "Unknown error"
+
+        if task_name == TASK_SCAN:
+            self._notifications.error(f"Scan failed: {error_msg}")
+            self._pending_scan_mode = None
+        elif task_name == TASK_CREATE:
+            self._notifications.error(f"Archive creation failed: {error_msg}")
+            events.publish_creation_failed("(unknown)", error_msg)
+
+    # ── Scan submission and continuation ──────────────────────────────────────
+
+    def _submit_scan(self, source_path: Path, mode: str) -> None:
+        """
+        Submit a scan to the ExecutionEngine.
+
+        mode: "secure" or "dev" — determines which workflow continues
+              after the scan result arrives.
+        """
+        self._pending_scan_mode = mode
+        self._notifications.info("Scanning project...")
+
+        self._execution_engine.submit(ExecutionRequest(
+            executable    = ScanExecutable(source_path),
+            task_name     = TASK_SCAN,
+            source_module = "secure_archive",
+        ))
+
+    def _on_scan_complete(self, result: ExecutionResult) -> None:
+        """Main thread. Scan finished — continue analysis pipeline."""
+        if not result.success:
+            self._notifications.error(f"Scan failed: {result.message}")
+            self._pending_scan_mode = None
+            return
+
+        self._notifications.info("Scan complete. Analyzing project...")
+
+        scan_result = result.payload
+
+        try:
+            plan = self._build_plan_from_scan(scan_result)
+        except Exception as error:
+            self._notifications.error(f"Analysis failed: {error}")
+            self._pending_scan_mode = None
+            return
+
+        events.publish_analysis_completed(
+            archive_name   = plan.archive_name,
+            project_type   = plan.project_profile.project_type,
+            files_included = plan.file_count,
+            files_ignored  = plan.ignored_count
+        )
+
+        mode = self._pending_scan_mode
+        self._pending_scan_mode = None
+
+        if mode == "secure":
+            ArchivePlanView(
+                parent     = self,
+                plan       = plan,
+                on_confirm = lambda: self._prompt_and_encrypt(plan)
+            )
+        elif mode == "dev":
+            ArchivePlanView(
+                parent     = self,
+                plan       = plan,
+                on_confirm = lambda: self._execute_dev_creation(plan)
+            )
+
+    def _build_plan_from_scan(self, scan_result):
+        """
+        Analysis pipeline — pure business logic.
+
+        Runs on the main thread but only touches in-memory objects,
+        so it's fast enough to remain synchronous.
+        """
+        profile = self._detector.detect(scan_result)
+        ignore_dec, ignore_sum = self._ignore.evaluate(scan_result, profile)
+        included = [
+            f for f, d in zip(scan_result.files, ignore_dec)
+            if not d.ignored
+        ]
+        classifications = self._classifier.classify_all(included)
+        comp_decisions  = self._strategy.decide_all(classifications)
+        return self._planner.build(
+            scan_result, profile, ignore_dec, ignore_sum,
+            classifications, comp_decisions
+        )
+
+    # ── UI construction ──────────────────────────────────────────────────────
 
     def _build(self) -> None:
         self.pack(fill="both", expand=True)
 
-        # Header
         header = tk.Frame(self, bg=Theme.PANEL, height=60)
         header.pack(fill="x")
         header.pack_propagate(False)
@@ -126,7 +274,6 @@ class SecureArchiveDashboard(tk.Frame):
             bg=Theme.PANEL, fg=Theme.SUBTLE
         ).pack(side="left", padx=(8, 0), pady=(20, 0))
 
-        # Body
         body = tk.Frame(self, bg=Theme.BACKGROUND)
         body.pack(fill="both", expand=True, padx=40, pady=30)
 
@@ -143,7 +290,6 @@ class SecureArchiveDashboard(tk.Frame):
             bg=Theme.BACKGROUND, fg=Theme.SUBTLE
         ).pack(pady=(0, 30))
 
-        # Primary actions (encrypted .sva)
         primary_frame = tk.Frame(body, bg=Theme.BACKGROUND)
         primary_frame.pack(pady=(0, 20))
 
@@ -160,7 +306,6 @@ class SecureArchiveDashboard(tk.Frame):
             column=1, primary=True
         )
 
-        # Secondary actions (unencrypted development)
         tk.Label(
             body, text="Development Format (Unencrypted)",
             font=Theme.FONT_LABEL,
@@ -183,7 +328,6 @@ class SecureArchiveDashboard(tk.Frame):
             column=1, primary=False
         )
 
-        # Info panel
         info = tk.Frame(body, bg=Theme.PANEL, padx=20, pady=14)
         info.pack(fill="x", pady=(30, 0))
 
@@ -241,34 +385,10 @@ class SecureArchiveDashboard(tk.Frame):
         if not source_str:
             return
 
-        source_path = Path(source_str)
-
-        self._notifications.info("Analyzing project...")
-        self.update()
-
-        try:
-            plan = self._analyze(source_path)
-        except Exception as error:
-            self._notifications.error(f"Analysis failed: {error}")
-            return
-
-        events.publish_analysis_completed(
-            archive_name=plan.archive_name,
-            project_type=plan.project_profile.project_type,
-            files_included=plan.file_count,
-            files_ignored=plan.ignored_count
-        )
-
-        # Show plan preview
-        ArchivePlanView(
-            parent=self,
-            plan=plan,
-            on_confirm=lambda: self._prompt_and_encrypt(plan)
-        )
+        self._submit_scan(Path(source_str), mode="secure")
 
     def _prompt_and_encrypt(self, plan) -> None:
-        """After plan confirmation, get password and encrypt."""
-        # Get password
+        """After plan confirmation, get password and submit archive creation."""
         password = simpledialog.askstring(
             "Archive Password",
             "Set a password for this archive:\n"
@@ -280,7 +400,6 @@ class SecureArchiveDashboard(tk.Frame):
             self._notifications.warning("Archive creation cancelled")
             return
 
-        # Confirm password
         confirm = simpledialog.askstring(
             "Confirm Password",
             "Re-enter password to confirm:",
@@ -294,7 +413,6 @@ class SecureArchiveDashboard(tk.Frame):
             )
             return
 
-        # Choose output location
         output_str = filedialog.asksaveasfilename(
             title="Save encrypted archive",
             defaultextension=SVA_EXTENSION,
@@ -305,63 +423,57 @@ class SecureArchiveDashboard(tk.Frame):
         if not output_str:
             return
 
-        output_path = Path(output_str)
-        self._execute_secure_creation(plan, password, output_path)
+        self._execute_secure_creation(plan, password, Path(output_str))
 
     def _execute_secure_creation(self, plan, password: str, output_path: Path) -> None:
-        """Execute the full encrypted archive creation."""
+        """
+        Submit encrypted archive creation to the ExecutionEngine.
+
+        Returns immediately. Completion arrives via ExecutionCompletedEvent
+        and is routed to _on_archive_created() on the main thread.
+        """
         events.publish_creation_started(
-            archive_name=plan.archive_name,
-            project_type=plan.project_profile.project_type,
-            file_count=plan.file_count
+            archive_name = plan.archive_name,
+            project_type = plan.project_profile.project_type,
+            file_count   = plan.file_count
         )
         events.publish_encryption_started(
-            archive_name=plan.archive_name,
-            file_count=plan.file_count
+            archive_name = plan.archive_name,
+            file_count   = plan.file_count
         )
 
         self._notifications.info(
             f"Creating encrypted archive: {plan.file_count} files..."
         )
-        self.update()
 
-        start = time.time()
+        self._execution_engine.submit(ExecutionRequest(
+            executable    = CreateArchiveExecutable(plan, password, output_path),
+            task_name     = TASK_CREATE,
+            source_module = "secure_archive",
+        ))
 
-        try:
-            # Sprint 14 pipeline (in memory)
-            import io
-            buffers = {}
-            def make_writer(path):
-                buf = io.BytesIO()
-                buffers[path] = buf
-                return buf.write
-
-            run_result = self._compressor.execute_plan(plan, make_writer)
-            manifest = self._mbuilder.build(plan, run_result)
-            compressed_entries = {p: b.getvalue() for p, b in buffers.items()}
-            payload = self._pbuilder.build(manifest, compressed_entries)
-
-            # Sprint 15 encryption
-            sva_result = self._writer_sva.write(
-                payload=payload,
-                password=password,
-                output_path=output_path
-            )
-        except Exception as error:
-            self._notifications.error(f"Archive creation failed: {error}")
-            events.publish_creation_failed(plan.archive_name, str(error))
+    def _on_archive_created(self, result: ExecutionResult) -> None:
+        """Main thread. Archive creation finished."""
+        if not result.success:
+            self._notifications.error(f"Archive creation failed: {result.message}")
+            events.publish_creation_failed("(unknown)", result.message)
             return
 
-        duration = time.time() - start
+        data = result.payload
+        plan        = data["plan"]
+        manifest    = data["manifest"]
+        run_result  = data["run_result"]
+        sva_result  = data["sva_result"]
+        output_path = data["output_path"]
+        duration    = data["duration"]
 
-        # Build report using existing reporter
         report = self._reporter.build(
             plan, manifest, run_result, output_path, duration
         )
 
         events.publish_encryption_completed(
-            archive_name=plan.archive_name,
-            file_size=sva_result.file_size
+            archive_name = plan.archive_name,
+            file_size    = sva_result.file_size
         )
         events.publish_created(report)
 
@@ -399,7 +511,6 @@ class SecureArchiveDashboard(tk.Frame):
 
         sva_path = Path(sva_str)
 
-        # Peek metadata first
         header = self._reader_sva.peek_metadata(sva_path)
         if header is None:
             self._dialogs.error(
@@ -408,7 +519,6 @@ class SecureArchiveDashboard(tk.Frame):
             )
             return
 
-        # Get password
         password = simpledialog.askstring(
             "Archive Password",
             f"Enter password for:\n{sva_path.name}",
@@ -419,7 +529,6 @@ class SecureArchiveDashboard(tk.Frame):
             self._notifications.warning("Restore cancelled")
             return
 
-        # Choose destination
         dest_str = filedialog.askdirectory(
             title="Choose restore destination",
             parent=self
@@ -427,8 +536,7 @@ class SecureArchiveDashboard(tk.Frame):
         if not dest_str:
             return
 
-        destination = Path(dest_str)
-        self._execute_secure_restore(sva_path, password, destination)
+        self._execute_secure_restore(sva_path, password, Path(dest_str))
 
     def _execute_secure_restore(
         self, sva_path: Path, password: str, destination: Path
@@ -441,19 +549,17 @@ class SecureArchiveDashboard(tk.Frame):
         self.update()
 
         result = self._restorer_sva.restore(
-            sva_path=sva_path,
-            password=password,
-            destination_root=destination
+            sva_path         = sva_path,
+            password         = password,
+            destination_root = destination
         )
 
         if not result.success:
-            # Map error to user-friendly info
             error_info = self._error_mapper.map(
-                result.error_type or "unknown",
+                result.error_type    or "unknown",
                 result.error_message or ""
             )
 
-            # Publish appropriate event
             if result.error_type == "authentication_failed":
                 events.publish_authentication_failed(sva_path.name)
             else:
@@ -463,25 +569,23 @@ class SecureArchiveDashboard(tk.Frame):
             self._dialogs.error(error_info.title, error_info.message)
 
             self._activity_service.record(
-                "SecureArchiveRestoreFailed",
-                "secure_archive",
+                "SecureArchiveRestoreFailed", "secure_archive",
                 f"{sva_path.name}: {error_info.category}"
             )
             return
 
-        # Success
         report = result.report
 
         events.publish_decryption_completed(
-            archive_name=sva_path.name,
-            files_restored=report.files_verified
+            archive_name   = sva_path.name,
+            files_restored = report.files_verified
         )
         events.publish_restored(report)
 
         if report.integrity_failures > 0:
             events.publish_integrity_failed(
-                archive_name=sva_path.name,
-                failures=report.integrity_failures
+                archive_name = sva_path.name,
+                failures     = report.integrity_failures
             )
 
         self._activity_service.record(
@@ -498,7 +602,7 @@ class SecureArchiveDashboard(tk.Frame):
     # ── DEVELOPMENT (.sva.dev) WORKFLOWS ──────────────────────────────────────
 
     def _handle_create_dev(self) -> None:
-        """Create unencrypted development archive (Sprint 14 flow)."""
+        """Create unencrypted development archive."""
         source_str = filedialog.askdirectory(
             title="Select folder to archive",
             parent=self
@@ -506,22 +610,7 @@ class SecureArchiveDashboard(tk.Frame):
         if not source_str:
             return
 
-        source_path = Path(source_str)
-
-        self._notifications.info("Analyzing project...")
-        self.update()
-
-        try:
-            plan = self._analyze(source_path)
-        except Exception as error:
-            self._notifications.error(f"Analysis failed: {error}")
-            return
-
-        ArchivePlanView(
-            parent=self,
-            plan=plan,
-            on_confirm=lambda: self._execute_dev_creation(plan)
-        )
+        self._submit_scan(Path(source_str), mode="dev")
 
     def _execute_dev_creation(self, plan) -> None:
         """Create unencrypted development archive."""
@@ -545,7 +634,7 @@ class SecureArchiveDashboard(tk.Frame):
             return
 
         duration = time.time() - start
-        report = self._reporter.build(plan, manifest, run, output_path, duration)
+        report   = self._reporter.build(plan, manifest, run, output_path, duration)
 
         self._notifications.success(
             f"Development archive: {report.formatted_size(report.compressed_size)}"
@@ -580,10 +669,12 @@ class SecureArchiveDashboard(tk.Frame):
         destination = Path(dest_str)
 
         RestorePreviewDialog(
-            parent=self,
-            manifest=manifest,
-            destination=str(destination),
-            on_confirm=lambda: self._execute_dev_restore(package_path, destination, manifest)
+            parent      = self,
+            manifest    = manifest,
+            destination = str(destination),
+            on_confirm  = lambda: self._execute_dev_restore(
+                package_path, destination, manifest
+            )
         )
 
     def _execute_dev_restore(self, package_path, destination, manifest) -> None:
@@ -601,18 +692,3 @@ class SecureArchiveDashboard(tk.Frame):
             f"Restored {report.files_verified}/{report.files_expected} files"
         )
         RestoreReportDialog(parent=self, report=report)
-
-    # ── SHARED HELPERS ────────────────────────────────────────────────────────
-
-    def _analyze(self, source_path: Path):
-        """Run analysis pipeline and build ArchivePlan."""
-        result = self._scanner.scan(source_path)
-        profile = self._detector.detect(result)
-        ignore_dec, ignore_sum = self._ignore.evaluate(result, profile)
-        included = [f for f, d in zip(result.files, ignore_dec) if not d.ignored]
-        classifications = self._classifier.classify_all(included)
-        comp_decisions = self._strategy.decide_all(classifications)
-        return self._planner.build(
-            result, profile, ignore_dec, ignore_sum,
-            classifications, comp_decisions
-        )

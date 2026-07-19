@@ -5,6 +5,8 @@ Secure Archive - Native VaultCore module.
 
 Implements the VaultModule contract.
 Zero infrastructure code — all platform services injected.
+
+Sprint 17: ExecutionEngine injected. Passed through to dashboard.
 """
 
 import tkinter as tk
@@ -19,9 +21,6 @@ from vaultcore.logger import log_event, log_info, log_error
 class SecureArchiveModule(VaultModule):
     """
     Secure Archive - Intelligent project archiving module.
-
-    Sprint 14 delivers the archive creation and restoration pipeline
-    without final encryption. Encryption envelope arrives in a future sprint.
     """
 
     def __init__(self) -> None:
@@ -41,6 +40,7 @@ class SecureArchiveModule(VaultModule):
         self._search_framework    = None
         self._command_registry    = None
         self._parent_root         = None
+        self._execution_engine    = None   # Sprint 17
 
     # ── VaultModule contract properties ───────────────────────────────────────
 
@@ -76,8 +76,9 @@ class SecureArchiveModule(VaultModule):
         activity_service,
         recent_items,
         storage_manager,
-        search_framework=None,
-        command_registry=None
+        search_framework   = None,
+        command_registry   = None,
+        execution_engine   = None,    # Sprint 17
     ) -> None:
         """Inject platform services from VaultCore."""
         self._parent_root         = parent_root
@@ -90,6 +91,7 @@ class SecureArchiveModule(VaultModule):
         self._storage_manager     = storage_manager
         self._search_framework    = search_framework
         self._command_registry    = command_registry
+        self._execution_engine    = execution_engine  # Sprint 17
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -126,6 +128,7 @@ class SecureArchiveModule(VaultModule):
                 activity_service    = self._activity_service,
                 recent_items        = self._recent_items,
                 storage_manager     = self._storage_manager,
+                execution_engine    = self._execution_engine,  # Sprint 17
                 on_close            = self._handle_close
             )
 
@@ -197,4 +200,3 @@ class SecureArchiveModule(VaultModule):
     def health(self) -> str:
         """Return current health status."""
         return "healthy"
-

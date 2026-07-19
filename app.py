@@ -3,6 +3,7 @@ app.py
 
 Secure Vault Platform - Entry Point.
 Sprint 11: Complete Platform Services Layer integrated.
+Sprint 17: Execution Engine introduced.
 """
 
 import tkinter as tk
@@ -45,6 +46,9 @@ from vaultcore.permission_manager import PermissionManager
 from vaultcore.import_export import ImportExportFramework
 from vaultcore.search_framework import SearchFramework
 from vaultcore.platform_actions import PlatformActions, register_platform_actions
+
+# Execution & Intelligence Layer (Sprint 17)
+from vaultcore.execution import ExecutionEngine
 
 from modules.document_vault.module import DocumentVaultModule
 from modules.password_vault.module import PasswordVaultModule
@@ -112,6 +116,13 @@ class SecureVaultPlatform:
 
         # Provision platform directories
         self._filesystem.provision_platform()
+
+        # Execution & Intelligence Layer (Sprint 17)
+        # One engine, started once, shared across all modules.
+        # No module creates threads directly from this point forward.
+        self._execution_engine = ExecutionEngine()
+        self._execution_engine.start()
+        log_info("Execution Engine started.")
 
         # Activity monitor
         self._activity_monitor = ActivityMonitor(
@@ -222,7 +233,8 @@ class SecureVaultPlatform:
             recent_items        = self._recent_items,
             storage_manager     = self._storage_manager,
             search_framework    = self._search_framework,
-            command_registry    = self._command_registry
+            command_registry    = self._command_registry,
+            execution_engine    = self._execution_engine,   # Sprint 17
         )
 
         self._module_manager.register(ModuleDefinition(
@@ -237,8 +249,7 @@ class SecureVaultPlatform:
         ))
 
         for definition in [
-
-            ("secure_notes",   "Secure Notes",    "Private encrypted notes\nwith rich text support.",    "📝"),
+            ("secure_notes", "Secure Notes", "Private encrypted notes\nwith rich text support.", "📝"),
         ]:
             module_id, name, desc, icon = definition
             self._module_manager.register(ModuleDefinition(
@@ -324,7 +335,6 @@ class SecureVaultPlatform:
 
     def _on_authenticated(self) -> None:
         log_event("Authenticated", "Platform session active")
-        # Set session password on Password Vault
         password = self._session_manager.get_master_password()
         if hasattr(self, "_password_vault_module") and password:
             self._password_vault_module._master_password = password
@@ -340,15 +350,15 @@ class SecureVaultPlatform:
     def _show_dashboard(self) -> None:
         self._clear_screen()
         PlatformHome(
-            parent          = self._root,
-            module_manager  = self._module_manager,
-            session_manager = self._session_manager,
-            on_settings     = self._show_settings,
-            on_security     = self._show_security_center,
-            on_about        = self._show_about,
-            on_lock         = self._handle_lock,
-            on_exit         = self._handle_exit,
-            on_storage      = self._show_storage_dashboard,
+            parent           = self._root,
+            module_manager   = self._module_manager,
+            session_manager  = self._session_manager,
+            on_settings      = self._show_settings,
+            on_security      = self._show_security_center,
+            on_about         = self._show_about,
+            on_lock          = self._handle_lock,
+            on_exit          = self._handle_exit,
+            on_storage       = self._show_storage_dashboard,
             on_notifications = self._show_notification_panel,
             on_activity      = self._show_activity_panel
         )
@@ -424,6 +434,8 @@ class SecureVaultPlatform:
         self._workspace_manager.cleanup_all()
         self._module_manager.shutdown_all()
         self._session_manager.destroy_session()
+        # Sprint 17 — stop all workers cleanly before exit
+        self._execution_engine.stop()
         log_info("Platform shutdown complete.")
         self._root.quit()
 
@@ -452,10 +464,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
