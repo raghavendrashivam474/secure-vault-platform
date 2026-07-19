@@ -1,7 +1,7 @@
 ﻿# Sprint 17 — Closeout Note
 
 **Date:**    2026-07-19
-**Version:** v0.6.0
+**Version:** v0.10.0
 **Module:**  VaultCore (Platform Infrastructure)
 **Status:**  ✅ Complete
 
