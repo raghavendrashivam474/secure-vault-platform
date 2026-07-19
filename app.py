@@ -2,8 +2,9 @@
 app.py
 
 Secure Vault Platform - Entry Point.
-Sprint 11: Complete Platform Services Layer integrated.
-Sprint 17: Execution Engine introduced.
+Sprint 11:   Complete Platform Services Layer integrated.
+Sprint 17:   Execution Engine introduced.
+Sprint 17.1: Global Progress Overlay Service.
 """
 
 import tkinter as tk
@@ -49,6 +50,7 @@ from vaultcore.platform_actions import PlatformActions, register_platform_action
 
 # Execution & Intelligence Layer (Sprint 17)
 from vaultcore.execution import ExecutionEngine
+from vaultcore.execution.ui.progress_overlay_service import ProgressOverlayService   # Sprint 17.1
 
 from modules.document_vault.module import DocumentVaultModule
 from modules.password_vault.module import PasswordVaultModule
@@ -123,6 +125,15 @@ class SecureVaultPlatform:
         self._execution_engine = ExecutionEngine()
         self._execution_engine.start()
         log_info("Execution Engine started.")
+
+        # Sprint 17.1 — Global Progress Overlay Service
+        # Auto-shows a live progress dialog for every task submitted
+        # to the ExecutionEngine. Modules never build progress UI.
+        self._progress_overlay_service = ProgressOverlayService(
+            root   = self._root,
+            engine = self._execution_engine,
+        )
+        log_info("Progress Overlay Service ready.")
 
         # Activity monitor
         self._activity_monitor = ActivityMonitor(
